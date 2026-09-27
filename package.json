@@ -7,7 +7,7 @@
   "type": "module",
   "main": "out/main/main.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "electron-vite dev",

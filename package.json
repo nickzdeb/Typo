@@ -3,13 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "description": "Offline desktop typing practice for local documents.",
+  "author": "nickzdeb",
   "type": "module",
   "main": "out/main/main.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "electron-vite preview"
+    "preview": "electron-vite preview",
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never"
   },
   "dependencies": {
     "pdfjs-dist": "4.8.69",
@@ -17,13 +26,48 @@
   },
   "devDependencies": {
     "@types/node": "^24.9.1",
-    "electron": "^35.0.0",
-    "electron-vite": "^2.3.0",
-    "typescript": "^5.9.3",
-    "vite": "^5.4.19",
     "autoprefixer": "^10.4.21",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^2.3.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
-    "vite-plugin-solid": "^2.11.14"
+    "typescript": "^5.9.3",
+    "vite": "^5.4.19",
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^3.2.7"
+  },
+  "build": {
+    "appId": "com.typo.documenttrainer",
+    "productName": "Document Trainer",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "npmRebuild": false,
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    }
   }
 }

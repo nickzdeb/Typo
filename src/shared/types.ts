@@ -1,4 +1,4 @@
-export type DocumentKind = "text" | "html" | "pdf" | "docx";
+export type DocumentKind = "text" | "html" | "pdf" | "docx" | "pptx";
 
 export type DocumentRecord = {
   id: string;

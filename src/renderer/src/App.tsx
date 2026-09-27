@@ -4,10 +4,15 @@ import { extractDocument } from "./core/extract";
 import { normalizeDocumentText, wordCount } from "./core/normalize";
 import { cn } from "./lib/cn";
 import { PdfPreview } from "./components/PdfPreview";
+import { PptxPreview } from "./components/PptxPreview";
 import { ThemeSettings } from "./components/ThemeSettings";
 
 const passageSize = 420;
 const minCenterWidth = 320;
+
+function hasSlideOrPagePreview(kind: DocumentRecord["kind"]): boolean {
+  return kind === "pdf" || kind === "pptx";
+}
 
 function newId(): string {
   return crypto.randomUUID();
@@ -114,7 +119,7 @@ export function App() {
     setSelectedId(document.id);
     setTyped("");
     setSessionStartedAt(undefined);
-    setShowPreview(document.kind === "pdf");
+    setShowPreview(hasSlideOrPagePreview(document.kind));
     setMessage(document.completed ? "This document is complete. Restart it whenever you want." : "Type the highlighted passage.");
     focusInput();
   }
@@ -230,13 +235,13 @@ export function App() {
                   <p class="mt-1 text-sm text-muted">{wordCount(document().text)} words · {Math.round(progress() * 100)}% complete</p>
                 </div>
                 <div class="flex gap-2">
-                  <Show when={document().kind === "pdf"}><button class="rounded-lg px-3 py-2 text-sm text-muted hover:bg-panelMuted" onClick={() => setShowPreview(!showPreview())}>{showPreview() ? "Hide preview" : "Show preview"}</button></Show>
+                  <Show when={hasSlideOrPagePreview(document().kind)}><button class="rounded-lg px-3 py-2 text-sm text-muted hover:bg-panelMuted" onClick={() => setShowPreview(!showPreview())}>{showPreview() ? "Hide preview" : "Show preview"}</button></Show>
                   <button class="rounded-lg px-3 py-2 text-sm text-muted hover:bg-panelMuted" onClick={() => void restartSelected()}>Restart</button>
                   <button class="rounded-lg px-3 py-2 text-sm text-error hover:bg-panelMuted" onClick={() => void deleteSelected()}>Remove</button>
                 </div>
               </div>
 
-              <div class="grid min-h-0 gap-5" style={{ "grid-template-columns": document().kind === "pdf" && showPreview() ? "minmax(0, 1fr) 8px " + previewWidth() + "px" : "minmax(0, 1fr)" }}>
+              <div class="grid min-h-0 gap-5" style={{ "grid-template-columns": hasSlideOrPagePreview(document().kind) && showPreview() ? "minmax(0, 1fr) 8px " + previewWidth() + "px" : "minmax(0, 1fr)" }}>
                 <article class="flex min-h-0 min-w-0 flex-col rounded-xl bg-panel p-7 shadow-xl">
                   <div class="mb-5 flex items-center justify-between"><p class="text-xs uppercase tracking-wide text-muted">typing passage</p><span class="text-xs text-muted">{document().cursor} / {document().text.length}</span></div>
                   <div class="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -269,9 +274,10 @@ export function App() {
                   />
                   <p class="mt-4 text-sm text-muted">{message()}</p>
                 </article>
-                <Show when={document().kind === "pdf" && showPreview()}>
+                <Show when={hasSlideOrPagePreview(document().kind) && showPreview()}>
                   <div class="cursor-col-resize bg-panelMuted transition hover:bg-accent" onPointerDown={(event) => beginResize("preview", event)} />
-                  <PdfPreview document={document()} />
+                  <Show when={document().kind === "pdf"}><PdfPreview document={document()} /></Show>
+                  <Show when={document().kind === "pptx"}><PptxPreview document={document()} /></Show>
                 </Show>
               </div>            </>}
           </Show>

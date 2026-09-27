@@ -15,6 +15,10 @@ function isDocx(file: PickedFile): boolean {
   return /\.docx$/i.test(file.name);
 }
 
+function isPptx(file: PickedFile): boolean {
+  return /\.pptx$/i.test(file.name);
+}
+
 function isHtml(file: PickedFile): boolean {
   return /\.(html?|xhtml)$/i.test(file.name);
 }
@@ -80,6 +84,14 @@ async function extractDocxText(file: PickedFile): Promise<string> {
   return result.value;
 }
 
+async function extractPptxText(file: PickedFile): Promise<string> {
+  const { parsePptx } = await import("./pptx");
+  const slides = await parsePptx(file.bytes);
+  // Equations and images are intentionally excluded here — they're shown in the
+  // slide preview pane, never as typing text (see components/PptxPreview.tsx).
+  return slides.map((slide) => slide.text).join("\n\n");
+}
+
 export async function extractDocument(file: PickedFile): Promise<ExtractedDocument> {
   let text: string;
   let kind: DocumentKind;
@@ -89,9 +101,12 @@ export async function extractDocument(file: PickedFile): Promise<ExtractedDocume
   } else if (isDocx(file)) {
     kind = "docx";
     text = await extractDocxText(file);
+  } else if (isPptx(file)) {
+    kind = "pptx";
+    text = await extractPptxText(file);
   } else {
     if (!isHtml(file) && !isPlainText(file)) {
-      throw new Error("Unsupported file type. Choose TXT, Markdown, HTML, DOCX, or PDF.");
+      throw new Error("Unsupported file type. Choose TXT, Markdown, HTML, DOCX, PPTX, or PDF.");
     }
     const source = new TextDecoder().decode(file.bytes);
     kind = isHtml(file) ? "html" : "text";

@@ -11,8 +11,8 @@
 
 - `electron/main.ts` — main process: file picker, JSON document persistence under Electron's userData dir, IPC handlers. `electron/preload.ts` mirrors each handler as a typed `window.desktopApi` function.
 - `src/shared/types.ts` — types shared between main and renderer (`DocumentRecord`, `DesktopApi`, ...). Add new IPC surface here first.
-- `src/renderer/src/core/` — pure, framework-free logic: `extract.ts` (file → text per format), `normalize.ts` (text cleanup), `theme.ts` (color presets/CSS vars). This is where most "add a feature" work belongs, and it's the easiest code to unit test.
-- `src/renderer/src/components/` — Solid UI components (`PdfPreview.tsx`, `ThemeSettings.tsx`, ...).
+- `src/renderer/src/core/` — pure, framework-free logic: `extract.ts` (file → text per format), `normalize.ts` (text cleanup), `theme.ts` (color presets/CSS vars), `pptx.ts` (slide text/images/equations), `omml.ts` (equation markup → MathML, used only by `pptx.ts`). This is where most "add a feature" work belongs, and it's the easiest code to unit test.
+- `src/renderer/src/components/` — Solid UI components (`PdfPreview.tsx`, `PptxPreview.tsx`, `ThemeSettings.tsx`, ...). A format with non-typable visual content (images, equations, diagrams) gets its own `<Kind>Preview.tsx`, shown in the same reference-only side pane pattern as PDF/PPTX — see `hasSlideOrPagePreview` in `App.tsx`.
 - `src/renderer/src/App.tsx` — top-level layout and session state (library, passage cursor, typing metrics, resizable panes).
 
 ## Adding a feature (common cases)

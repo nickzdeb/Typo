@@ -6,12 +6,13 @@ Offline desktop typing practice for documents stored on the local machine.
 
 - Electron desktop shell.
 - Local document library persisted under Electron's user-data directory.
-- Plain text, Markdown, HTML, Word (.docx), and text-based PDF import.
+- Plain text, Markdown, HTML, Word (.docx), PowerPoint (.pptx), and text-based PDF import.
 - PDF text extraction through PDF.js with document scripting disabled.
+- PPTX slides: text becomes the typing passage; embedded images and equations are shown in a reference-only slide preview pane, never as typing text.
 - Side-by-side source reading and passage typing.
 - Passage-completion progress and restart support.
 
-This app does not upload document content. Browser extensions, live webpages, OCR, DOCX, EPUB, and polished statistics are intentionally outside the first milestone.
+This app does not upload document content. Browser extensions, live webpages, OCR, EPUB, and polished statistics are intentionally outside the first milestone.
 
 ## Installing the app (no terminal required)
 

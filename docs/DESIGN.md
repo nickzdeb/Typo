@@ -84,7 +84,16 @@ Progress is committed when a passage is completed. If the app closes mid-passage
 - `.md` and `.markdown`
 - `.html`, `.htm`, `.xhtml`
 - `.docx` (via mammoth, raw text only — no styling/images)
+- `.pptx`: slide text becomes the typing passage; embedded images and equations render in a slide preview pane (see below), never as typing text
 - text-based `.pdf`
+
+### PPTX handling in detail
+
+Slide text is pulled from every text-bearing shape and table cell, in slide order — the same "typable text vs. reference-only visuals" split as PDF, but lighter-weight:
+
+- **Images**: extracted from each slide's relationships and shown as a plain per-slide list in the preview pane — not a pixel-accurate reproduction of the slide layout. Legacy vector formats (EMF/WMF, common in older clip art) aren't renderable in a browser context and are skipped.
+- **Equations**: OOXML math (OMML) is structurally separate from slide text (it lives under its own XML namespace), so it's never pulled into the typing passage in the first place — no filtering step needed. For display, a hand-written converter (`core/omml.ts`) maps the common constructs (runs, fractions, super/subscripts, roots, delimiters, n-ary operators like sum/integral) to MathML, which Chromium renders natively with no extra library. Anything outside that subset (matrices, accents, exotic group characters) falls back to flattened plain text in the same slot, so rendering never breaks — it just loses the fancy layout for that one equation.
+- Deliberately not attempted: pixel-accurate slide rendering (would need a full layout+rendering engine or bundling something like headless LibreOffice, at odds with staying lightweight) and speaker notes (not "on the slide," so not part of the practice text).
 
 ### Planned
 

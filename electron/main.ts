@@ -27,7 +27,7 @@ function registerIpc(): void {
     const options: OpenDialogOptions = {
       properties: ["openFile"],
       filters: [
-        { name: "Supported documents", extensions: ["txt", "md", "markdown", "html", "htm", "pdf", "docx"] },
+        { name: "Supported documents", extensions: ["txt", "md", "markdown", "html", "htm", "pdf", "docx", "pptx"] },
         { name: "All files", extensions: ["*"] },
       ],
     };

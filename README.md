@@ -8,9 +8,9 @@ Offline desktop typing practice for documents stored on the local machine.
 - Local document library persisted under Electron's user-data directory.
 - Plain text, Markdown, HTML, Word (.docx), PowerPoint (.pptx), and text-based PDF import.
 - PDF text extraction through PDF.js with document scripting disabled.
-- PPTX slides: text becomes the typing passage; embedded images and equations are shown in a reference-only slide preview pane, never as typing text.
-- Side-by-side source reading and passage typing.
-- Passage-completion progress and restart support.
+- PPTX slides: text becomes typing text; embedded images and equations are shown in a reference-only slide preview pane, never as typing text.
+- The whole document is typable at once — click anywhere in the text to jump the typing cursor there.
+- Per-character progress tracking and restart support.
 
 This app does not upload document content. Browser extensions, live webpages, OCR, EPUB, and polished statistics are intentionally outside the first milestone.
 

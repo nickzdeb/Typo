@@ -1,4 +1,5 @@
-import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Index, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { createStore } from "solid-js/store";
 import type { DocumentRecord } from "../../shared/types";
 import { extractDocument } from "./core/extract";
 import { normalizeDocumentText, wordCount } from "./core/normalize";
@@ -6,10 +7,12 @@ import { cn } from "./lib/cn";
 import { PdfPreview } from "./components/PdfPreview";
 import { PptxPreview } from "./components/PptxPreview";
 import { ThemeSettings } from "./components/ThemeSettings";
+import { VirtualKeyboard } from "./components/VirtualKeyboard";
 
-const passageSize = 420;
-const previewSize = 600;
 const minCenterWidth = 320;
+const saveDebounceMs = 400;
+
+type CharResult = "correct" | "incorrect" | undefined;
 
 function hasSlideOrPagePreview(kind: DocumentRecord["kind"]): boolean {
   return kind === "pdf" || kind === "pptx";
@@ -23,7 +26,11 @@ export function App() {
   let inputRef: HTMLTextAreaElement | undefined;
   const [documents, setDocuments] = createSignal<DocumentRecord[]>([]);
   const [selectedId, setSelectedId] = createSignal<string>();
-  const [typed, setTyped] = createSignal("");
+  const [results, setResults] = createStore<CharResult[]>([]);
+  const [typingIndex, setTypingIndex] = createSignal(0);
+  const [maxReachedIndex, setMaxReachedIndex] = createSignal(0);
+  const [correctCount, setCorrectCount] = createSignal(0);
+  const [incorrectCount, setIncorrectCount] = createSignal(0);
   const [message, setMessage] = createSignal("Choose a document to begin.");
   const [isBusy, setIsBusy] = createSignal(false);
   const [isFocused, setIsFocused] = createSignal(false);
@@ -64,7 +71,6 @@ export function App() {
     onCleanup(() => window.removeEventListener("keydown", stealFocusForTyping));
   });
 
-
   function beginResize(kind: "sidebar" | "preview", event: PointerEvent): void {
     event.preventDefault();
     const startX = event.clientX;
@@ -81,41 +87,22 @@ export function App() {
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   }
+
   const selected = createMemo(() => documents().find((item) => item.id === selectedId()));
-  const passage = createMemo(() => {
-    const document = selected();
-    return document === undefined ? "" : document.text.slice(document.cursor, document.cursor + passageSize);
-  });
-  // Read-ahead only — never typed against. Shown dimmed so finishing a passage
-  // doesn't feel like hitting a wall: there's visibly more document beyond it.
-  const upcomingPreview = createMemo(() => {
-    const document = selected();
-    if (document === undefined) return "";
-    const start = document.cursor + passageSize;
-    return document.text.slice(start, start + previewSize);
-  });
-  const hasMoreAfterPreview = createMemo(() => {
-    const document = selected();
-    if (document === undefined) return false;
-    return document.cursor + passageSize + previewSize < document.text.length;
-  });
   const progress = createMemo(() => {
     const document = selected();
-    return document === undefined || document.text.length === 0 ? 0 : document.cursor / document.text.length;
+    return document === undefined || document.text.length === 0 ? 0 : maxReachedIndex() / document.text.length;
   });
   const metrics = createMemo(() => {
-    const input = typed();
-    const target = passage();
-    let correct = 0;
-    for (let index = 0; index < input.length; index++) {
-      if (input[index] === target[index]) correct++;
-    }
+    const correct = correctCount();
+    const incorrect = incorrectCount();
+    const total = correct + incorrect;
     const startedAt = sessionStartedAt();
     const elapsedMinutes = startedAt === undefined ? 0 : (Date.now() - startedAt) / 60000;
     return {
       correct,
-      errors: input.length - correct,
-      accuracy: input.length === 0 ? 100 : (correct / input.length) * 100,
+      errors: incorrect,
+      accuracy: total === 0 ? 100 : (correct / total) * 100,
       wpm: elapsedMinutes <= 0 ? 0 : correct / 5 / elapsedMinutes,
     };
   });
@@ -129,12 +116,48 @@ export function App() {
 
   onMount(() => void refresh().catch((error) => setMessage(error instanceof Error ? error.message : "Desktop bridge unavailable.")));
 
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  let pendingSave: { document: DocumentRecord; cursor: number } | undefined;
+
+  async function commitProgress(document: DocumentRecord, cursor: number): Promise<void> {
+    const completed = cursor >= document.text.length;
+    const updated = { ...document, cursor, completed, updatedAt: Date.now() };
+    await window.desktopApi.saveDocument(updated);
+    setDocuments((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    if (completed) setMessage("Document complete. Excellent work.");
+  }
+
+  function flushPendingSave(): void {
+    if (saveTimer !== undefined) {
+      clearTimeout(saveTimer);
+      saveTimer = undefined;
+    }
+    if (pendingSave === undefined) return;
+    const { document, cursor } = pendingSave;
+    pendingSave = undefined;
+    void commitProgress(document, cursor);
+  }
+
+  function scheduleSave(document: DocumentRecord, cursor: number): void {
+    pendingSave = { document, cursor };
+    if (saveTimer !== undefined) clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushPendingSave, saveDebounceMs);
+  }
+
+  onCleanup(flushPendingSave);
+
   function selectDocument(document: DocumentRecord): void {
+    flushPendingSave();
     setSelectedId(document.id);
-    setTyped("");
+    setResults(new Array<CharResult>(document.text.length).fill(undefined));
+    const startAt = Math.min(document.cursor, document.text.length);
+    setTypingIndex(startAt);
+    setMaxReachedIndex(startAt);
+    setCorrectCount(0);
+    setIncorrectCount(0);
     setSessionStartedAt(undefined);
     setShowPreview(hasSlideOrPagePreview(document.kind));
-    setMessage(document.completed ? "This document is complete. Restart it whenever you want." : "Type the highlighted passage.");
+    setMessage(document.completed ? "This document is complete. Restart it whenever you want." : "Click anywhere in the text to start typing from there.");
     focusInput();
   }
 
@@ -161,7 +184,7 @@ export function App() {
       await window.desktopApi.saveDocument(document);
       setDocuments((current) => [document, ...current]);
       selectDocument(document);
-      setMessage("Imported " + document.title + ". Type the highlighted passage.");
+      setMessage("Imported " + document.title + ". Click anywhere in the text to start typing from there.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Import failed.");
     } finally {
@@ -172,6 +195,7 @@ export function App() {
   async function deleteSelected(): Promise<void> {
     const document = selected();
     if (document === undefined) return;
+    flushPendingSave();
     await window.desktopApi.deleteDocument(document.id);
     const next = documents().filter((item) => item.id !== document.id);
     setDocuments(next);
@@ -182,25 +206,63 @@ export function App() {
   async function restartSelected(): Promise<void> {
     const document = selected();
     if (document === undefined) return;
+    flushPendingSave();
     const updated = { ...document, cursor: 0, completed: false, updatedAt: Date.now() };
     await window.desktopApi.saveDocument(updated);
     setDocuments((current) => current.map((item) => (item.id === updated.id ? updated : item)));
     selectDocument(updated);
   }
 
-  async function handleInput(event: InputEvent & { currentTarget: HTMLTextAreaElement }): Promise<void> {
-    const value = event.currentTarget.value;
-    if (value.length > 0 && sessionStartedAt() === undefined) setSessionStartedAt(Date.now());
-    setTyped(value);
+  function recordResult(index: number, correct: boolean): void {
+    const previous = results[index];
+    if (previous === "correct") setCorrectCount((count) => count - 1);
+    else if (previous === "incorrect") setIncorrectCount((count) => count - 1);
+    setResults(index, correct ? "correct" : "incorrect");
+    if (correct) setCorrectCount((count) => count + 1);
+    else setIncorrectCount((count) => count + 1);
+  }
+
+  function clearResult(index: number): void {
+    const previous = results[index];
+    if (previous === "correct") setCorrectCount((count) => count - 1);
+    else if (previous === "incorrect") setIncorrectCount((count) => count - 1);
+    setResults(index, undefined);
+  }
+
+  function jumpTo(index: number): void {
+    setTypingIndex(index);
+    focusInput();
+  }
+
+  function handleKeyDown(event: KeyboardEvent): void {
     const document = selected();
-    const target = passage();
-    if (document === undefined || value !== target) return;
-    const cursor = Math.min(document.text.length, document.cursor + target.length);
-    const updated = { ...document, cursor, completed: cursor >= document.text.length, updatedAt: Date.now() };
-    await window.desktopApi.saveDocument(updated);
-    setDocuments((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-    setTyped("");
-    setMessage(updated.completed ? "Document complete. Excellent work." : "Passage complete. Continue.");
+    if (document === undefined) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      const index = typingIndex();
+      if (index === 0) return;
+      clearResult(index - 1);
+      setTypingIndex(index - 1);
+      return;
+    }
+
+    const expected = event.key === "Enter" ? "\n" : event.key.length === 1 ? event.key : undefined;
+    if (expected === undefined) return;
+    event.preventDefault();
+
+    const index = typingIndex();
+    if (index >= document.text.length) return;
+    if (sessionStartedAt() === undefined) setSessionStartedAt(Date.now());
+
+    recordResult(index, document.text[index] === expected);
+    const nextIndex = index + 1;
+    setTypingIndex(nextIndex);
+    if (nextIndex > maxReachedIndex()) {
+      setMaxReachedIndex(nextIndex);
+      scheduleSave(document, nextIndex);
+    }
   }
 
   return (
@@ -219,7 +281,7 @@ export function App() {
       </header>
 
       <div class="grid min-h-[calc(100vh-89px)]" style={{ "grid-template-columns": sidebarWidth() + "px 8px minmax(0, 1fr)" }}>
-        <aside class="border-r border-panelMuted bg-panel px-4 py-5">
+        <aside class="flex flex-col border-r border-panelMuted bg-panel px-4 py-5">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-muted">Library</h2>
             <span class="text-xs text-muted">{documents().length}</span>
@@ -237,11 +299,12 @@ export function App() {
               </For>
             </div>
           </Show>
+          <VirtualKeyboard />
         </aside>
         <div class="cursor-col-resize bg-panelMuted transition hover:bg-accent" onPointerDown={(event) => beginResize("sidebar", event)} />
 
         <section class="grid min-h-0 grid-rows-[auto_1fr] gap-5 p-8">
-          <Show when={selected()} fallback={<div class="grid place-items-center rounded-xl border border-dashed border-panelMuted bg-panel p-12 text-center"><div><h2 class="text-xl font-semibold">Bring a document to practice</h2><p class="mt-2 max-w-md text-muted">Import a text file, HTML file, Markdown file, or PDF. The document stays on this computer.</p><Show when={message() !== "Choose a document to begin."}><p class="mt-4 text-sm text-error">{message()}</p></Show></div></div>}>
+          <Show when={selected()} fallback={<div class="grid place-items-center rounded-xl border border-dashed border-panelMuted bg-panel p-12 text-center"><div><h2 class="text-xl font-semibold">Bring a document to practice</h2><p class="mt-2 max-w-md text-muted">Import a text file, HTML file, Markdown file, PowerPoint, or PDF. The document stays on this computer.</p><Show when={message() !== "Choose a document to begin."}><p class="mt-4 text-sm text-error">{message()}</p></Show></div></div>}>
             {(document) => <>
               <div class="flex items-start justify-between gap-4">
                 <div>
@@ -258,8 +321,8 @@ export function App() {
               <div class="grid min-h-0 gap-5" style={{ "grid-template-columns": hasSlideOrPagePreview(document().kind) && showPreview() ? "minmax(0, 1fr) 8px " + previewWidth() + "px" : "minmax(0, 1fr)" }}>
                 <article class="flex min-h-0 min-w-0 flex-col rounded-xl bg-panel p-7 shadow-xl">
                   <div class="mb-5 flex items-center justify-between">
-                    <p class="text-xs uppercase tracking-wide text-muted">typing passage</p>
-                    <span class="text-xs text-muted">{document().cursor} / {document().text.length} characters · finishing this passage reveals the next one automatically</span>
+                    <p class="text-xs uppercase tracking-wide text-muted">typing text</p>
+                    <span class="text-xs text-muted">{maxReachedIndex()} / {document().text.length} characters · click anywhere in the text to jump there</span>
                   </div>
                   <div class="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {[["wpm", metrics().wpm.toFixed(0)], ["accuracy", metrics().accuracy.toFixed(0) + "%"], ["errors", String(metrics().errors)], ["progress", Math.round(progress() * 100) + "%"]].map(([label, value]) => <div class="rounded-lg bg-panelMuted px-3 py-2"><div class="text-xs uppercase tracking-wide text-muted">{label}</div><div class="mt-1 text-lg font-semibold text-ink">{value}</div></div>)}
@@ -271,19 +334,22 @@ export function App() {
                     )}
                     onClick={focusInput}
                   >
-                    <For each={Array.from(passage())}>{(character, index) => <>
-                      <span class={cn(index() < typed().length && typed()[index()] === character ? "text-success" : index() < typed().length ? "bg-error/30 text-error" : index() === typed().length ? "border-b-2 border-accent" : "text-muted")}>{character === " " ? "·" : character}</span>
-                      {character === " " && <wbr />}
-                    </>}</For>
-                    <Show when={upcomingPreview().length > 0}>
-                      <span class="text-muted/30">
-                        <For each={Array.from(upcomingPreview())}>{(character) => <>
-                          {character === " " ? "·" : character}
-                          {character === " " && <wbr />}
-                        </>}</For>
-                        {hasMoreAfterPreview() && "…"}
-                      </span>
-                    </Show>
+                    <Index each={Array.from(document().text)}>
+                      {(character, index) => (
+                        <>
+                          <span
+                            class={cn(results[index] === "correct" ? "text-success" : results[index] === "incorrect" ? "bg-error/30 text-error" : index === typingIndex() ? "border-b-2 border-accent" : "text-muted")}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              jumpTo(index);
+                            }}
+                          >
+                            {character() === " " ? "·" : character() === "\n" ? "↵\n" : character()}
+                          </span>
+                          {character() === " " && <wbr />}
+                        </>
+                      )}
+                    </Index>
                     <Show when={!isFocused()}>
                       <div class="absolute inset-0 grid place-items-center rounded-lg bg-canvas/70 text-sm text-muted">
                         Click here or start typing to continue
@@ -296,8 +362,7 @@ export function App() {
                     style={{ "pointer-events": "none" }}
                     autofocus
                     spellcheck={false}
-                    value={typed()}
-                    onInput={(event) => void handleInput(event)}
+                    onKeyDown={handleKeyDown}
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setIsFocused(false)}
                   />

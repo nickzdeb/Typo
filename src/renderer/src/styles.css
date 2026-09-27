@@ -3,19 +3,20 @@
 @tailwind utilities;
 
 :root {
-  /* Overwritten at runtime by core/theme.ts (which also persists the choice); these are just the pre-JS fallback. */
-  --color-canvas: #101216;
-  --color-panel: #191d24;
-  --color-panel-muted: #222832;
-  --color-ink: #f1f3f5;
-  --color-muted: #a7b0bd;
-  --color-accent: #8ab4ff;
-  --color-success: #8bd5a3;
-  --color-error: #ff9b9b;
+  /* Overwritten at runtime by core/theme.ts (which also persists the choice); these are
+     just the pre-JS fallback. Space-separated "R G B", not hex — see tailwind.config.cjs. */
+  --color-canvas: 16 18 22;
+  --color-panel: 25 29 36;
+  --color-panel-muted: 34 40 50;
+  --color-ink: 241 243 245;
+  --color-muted: 167 176 189;
+  --color-accent: 138 180 255;
+  --color-success: 139 213 163;
+  --color-error: 255 155 155;
 
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  background: var(--color-canvas);
+  background: rgb(var(--color-canvas));
 }
 
 * {
@@ -24,7 +25,7 @@
 
 body {
   margin: 0;
-  background: var(--color-canvas);
+  background: rgb(var(--color-canvas));
 }
 
 button,

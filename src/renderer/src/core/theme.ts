@@ -122,7 +122,10 @@ const cssVariableByKey: Record<keyof ThemeColors, string> = {
 export function applyTheme(colors: ThemeColors): void {
   const root = document.documentElement;
   for (const key of Object.keys(cssVariableByKey) as (keyof ThemeColors)[]) {
-    root.style.setProperty(cssVariableByKey[key], colors[key]);
+    // Space-separated "R G B" (not the hex string) so Tailwind's opacity modifiers
+    // (e.g. bg-error/30) can interpolate an alpha channel via rgb(var(--x) / <alpha>).
+    // A bare hex value there silently drops the utility instead of erroring.
+    root.style.setProperty(cssVariableByKey[key], hexToRgb(colors[key]).join(" "));
   }
   root.style.colorScheme = isDark(colors.canvas) ? "dark" : "light";
 }

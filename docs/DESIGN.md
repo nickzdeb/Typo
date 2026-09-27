@@ -29,15 +29,14 @@ Preload bridge
 
 Solid renderer
   - document library
-  - source reading pane
-  - active passage display
+  - continuous full-document typing view (click-anywhere-to-jump)
   - typing input and progress UI
+  - optional virtual keyboard (key-press visualization)
 
 Renderer document core
   - text/HTML normalization
-  - PDF.js extraction
-  - passage selection
-  - character comparison
+  - PDF.js / mammoth / pptx extraction
+  - per-character correctness tracking
 ```
 
 ## Security decisions
@@ -66,15 +65,31 @@ The MVP stores records as JSON in Electron's `userData` directory. This avoids a
 
 ## Typing behavior
 
-The renderer divides the remaining normalized text into 420-character passages. The user sees:
+The whole document is rendered at once (not chunked into passages — an earlier design that
+capped the visible text at 420 characters caused real confusion: it looked like the document
+had ended, and overtyping past the cap silently stopped registering keystrokes while the stats
+kept climbing). Per character: correct entries in green, incorrect in red, the current position
+underlined. Clicking any character jumps the typing cursor there — useful for skipping around
+or fixing a section without backspacing through everything after it.
 
-- the current passage with the current character marked;
-- an optional rendered PDF reference pane containing diagrams and images;
-- correct characters in green and incorrect entered characters in red;
-- a textarea for typing;
-- document progress and a restart action.
+Input is captured via `keydown` on an invisible, always-focused `textarea` (not `input` events
+diffed against a string) so a click-driven jump and Backspace both map onto a single "current
+index" model cleanly: each printable key (or Enter, for a paragraph break) compares against
+`text[index]`, records correct/incorrect, and advances; Backspace steps back and clears that
+slot's result. Correctness results live in a `solid-js/store` array (`createStore`, not a plain
+signal) so updating one character's result only re-renders that one span — with whole documents
+now on screen, a plain signal would re-diff every character on every keystroke.
 
-Progress is committed when a passage is completed. If the app closes mid-passage, the user may need to repeat that current passage; this is an intentional MVP limitation. The next persistence milestone should store an exact passage offset and partial input safely.
+Progress (the furthest position reached, used for the resume point and the % complete shown in
+the library) is saved with a 400ms debounce as you type, rather than only at passage boundaries
+as before — coarser passage-sized checkpoints were actually a lower save frequency, not a safety
+feature. Exact character-by-character correctness history isn't persisted across sessions
+(restarting or reopening a document clears red/green marks and session stats, matching the
+existing "Restarting a document resets session metrics" behavior); only the resume position is.
+
+An optional virtual keyboard in the library sidebar lights up each physical key as it's pressed
+(matched by `KeyboardEvent.code`, not `.key`, so it reflects physical position regardless of
+Shift state) — collapsible, with the preference persisted locally.
 
 ## Supported input
 
@@ -113,9 +128,8 @@ Slide text is pulled from every text-bearing shape and table cell, in slide orde
 - [x] Text and HTML extraction.
 - [x] PDF text extraction.
 - [x] Source/typing split view.
-- [x] Passage progress and restart.
-- [ ] Exact mid-passage resume.
-- [ ] Automated tests.
+- [x] Continuous whole-document typing with click-to-jump and debounced resume-position saves.
+- [x] Automated tests.
 
 ### Milestone 2: reliable document workflow
 
@@ -124,7 +138,7 @@ Slide text is pulled from every text-bearing shape and table cell, in slide orde
 - Add extraction warnings and editable text.
 - Add SQLite migrations and local result history.
 - Add document search, rename, and archive.
-- Add large-document chunking without loading all text into one DOM tree.
+- Virtualize the typing view's character rendering if very large documents turn out to be slow in practice (see Known technical risks).
 
 ### Milestone 3: broader formats
 
@@ -138,15 +152,14 @@ Slide text is pulled from every text-bearing shape and table cell, in slide orde
 1. Install dependencies with the existing Node 18 environment.
 2. Run typecheck and fix Electron-vite/PDF.js declaration issues.
 3. Run the app and manually import a TXT file and a PDF.
-4. Add unit tests for normalization and passage boundaries.
-5. Implement exact partial-passage resume.
-6. Replace JSON persistence with a versioned repository abstraction before adding history.
+4. Add unit tests for normalization and extraction (done — see `core/*.test.ts`).
+5. Replace JSON persistence with a versioned repository abstraction before adding history.
 
 ## Known technical risks
 
 - PDF reading order can be wrong for columns, tables, and unusual layouts.
 - PDF files with no text layer need OCR.
-- Full source rendering can become expensive for very large documents; the reader pane should eventually virtualize or paginate.
+- The typing view renders the whole document as individual characters; this is fine for typical documents but could get slow for very large ones (tens of thousands of characters) — virtualization is the fix if that turns out to matter in practice.
 - JSON persistence is intentionally temporary and should not be treated as the final database layer.
 - The Electron package must keep remote content out of privileged renderer contexts.
 
@@ -163,7 +176,7 @@ Completed in the initial vertical slice:
 - SolidJS library and source/typing split view.
 - TXT, Markdown, HTML, and text-based PDF extraction.
 - PDF.js worker bundling with scripting disabled.
-- Passage-level typing progress and restart.
+- Continuous whole-document typing progress and restart.
 - Tailwind styling with project-local color tokens.
 
 Validation in the current environment:
@@ -176,7 +189,7 @@ Validation in the current environment:
 
 ## UX milestone
 
-The practice screen now highlights the active passage inside the full source document and displays live WPM, accuracy, error count, and document progress. Restarting a document resets the session metrics. The current passage remains a bounded 420-character unit so the full source remains readable without making the input target unwieldy.
+The practice screen displays the whole document at once and tracks live WPM, accuracy, error count, and document progress per character. Restarting a document resets the session metrics.
 
 ## Current UX and extraction milestone
 
@@ -187,3 +200,20 @@ The practice screen now highlights the active passage inside the full source doc
 - PDF preview rereads the original file path saved with newly imported documents. Older records created before sourcePath was added should be removed and re-imported to enable preview.
 - Greek letters and common math symbols are normalized into keyboardable English names: pi, beta, alpha, infinity, times, square root, and similar names.
 - Symbol conversion is intentionally broad for the MVP; a future parser can make conversion context-sensitive for technical notation.
+
+## Continuous-typing milestone (2026-09-27)
+
+Replaced the 420-character passage model with continuous whole-document typing (see "Typing
+behavior" above) — the passage cap was reported as a bug ("the document just stops"), and
+overtyping past it silently broke rendering while stats kept updating. Also fixed along the way:
+
+- **Theme opacity bug**: `bg-error/30`-style utilities (the incorrect-character highlight) never
+  actually applied any styling. Tailwind's color-opacity modifiers need a CSS variable holding
+  space-separated `R G B` channels wrapped as `rgb(var(--x) / <alpha-value>)`; the theme system
+  had been setting the variables to full hex strings instead (`var(--color-x)` directly), which
+  Tailwind can't decompose — it silently drops the utility rather than erroring. Fixed in
+  `core/theme.ts` (sets `"R G B"`) and `tailwind.config.cjs` (the `rgb(... / <alpha-value>)`
+  wrapper). Compiled CSS was checked directly to confirm the utility now exists at all, not just
+  that it looks right on screen.
+- Added a small virtual keyboard (`components/VirtualKeyboard.tsx`) in the library sidebar that
+  lights up each key as it's physically pressed, collapsible via a "Hide"/"Show" toggle.

@@ -6,7 +6,7 @@ Offline desktop typing practice for documents stored on the local machine.
 
 - Electron desktop shell.
 - Local document library persisted under Electron's user-data directory.
-- Plain text, Markdown, HTML, and text-based PDF import.
+- Plain text, Markdown, HTML, Word (.docx), and text-based PDF import.
 - PDF text extraction through PDF.js with document scripting disabled.
 - Side-by-side source reading and passage typing.
 - Passage-completion progress and restart support.

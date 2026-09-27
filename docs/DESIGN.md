@@ -83,12 +83,13 @@ Progress is committed when a passage is completed. If the app closes mid-passage
 - `.txt`
 - `.md` and `.markdown`
 - `.html`, `.htm`, `.xhtml`
+- `.docx` (via mammoth, raw text only — no styling/images)
 - text-based `.pdf`
 
 ### Planned
 
 - scanned PDF OCR;
-- DOCX;
+- legacy `.doc`, `.odt`, `.rtf`;
 - EPUB;
 - image files;
 - PDF preview and extraction correction;

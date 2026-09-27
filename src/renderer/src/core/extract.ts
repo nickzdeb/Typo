@@ -11,6 +11,10 @@ function isPdf(file: PickedFile): boolean {
   return /\.pdf$/i.test(file.name);
 }
 
+function isDocx(file: PickedFile): boolean {
+  return /\.docx$/i.test(file.name);
+}
+
 function isHtml(file: PickedFile): boolean {
   return /\.(html?|xhtml)$/i.test(file.name);
 }
@@ -70,15 +74,24 @@ async function extractPdfText(file: PickedFile): Promise<string> {
   return pages.join("\n\n");
 }
 
+async function extractDocxText(file: PickedFile): Promise<string> {
+  const mammoth = await import("mammoth");
+  const result = await mammoth.extractRawText({ arrayBuffer: file.bytes.slice().buffer });
+  return result.value;
+}
+
 export async function extractDocument(file: PickedFile): Promise<ExtractedDocument> {
   let text: string;
   let kind: DocumentKind;
   if (isPdf(file)) {
     kind = "pdf";
     text = await extractPdfText(file);
+  } else if (isDocx(file)) {
+    kind = "docx";
+    text = await extractDocxText(file);
   } else {
     if (!isHtml(file) && !isPlainText(file)) {
-      throw new Error("Unsupported file type. Choose TXT, Markdown, HTML, or PDF.");
+      throw new Error("Unsupported file type. Choose TXT, Markdown, HTML, DOCX, or PDF.");
     }
     const source = new TextDecoder().decode(file.bytes);
     kind = isHtml(file) ? "html" : "text";

@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "description": "Offline desktop typing practice for local documents.",
-  "author": "nickzdeb",
+  "homepage": "https://github.com/nickzdeb/Typo",
+  "author": {
+    "name": "nickzdeb",
+    "email": "nickzdeb@users.noreply.github.com"
+  },
   "type": "module",
   "main": "out/main/main.js",
   "engines": {

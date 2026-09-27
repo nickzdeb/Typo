@@ -101,10 +101,14 @@ describe("extractDocument", () => {
 
   it("reports a sectionBreaks offset per PPTX slide, matching the joined text exactly", async () => {
     vi.doMock("./pptx", () => ({
-      parsePptx: vi.fn(async () => [
-        { text: "Slide one text", images: [], equations: [] },
-        { text: "Slide two text", images: [], equations: [] },
-      ]),
+      parsePptx: vi.fn(async () => ({
+        slideWidthEmu: 12192000,
+        slideHeightEmu: 6858000,
+        slides: [
+          { shapes: [], text: "Slide one text" },
+          { shapes: [], text: "Slide two text" },
+        ],
+      })),
     }));
     const bytes = new TextEncoder().encode("unused — pptx parsing is mocked");
     const result = await extractDocument(pickedFile("deck.pptx", bytes));

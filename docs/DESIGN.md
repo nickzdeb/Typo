@@ -10,7 +10,7 @@ The first product boundary is deliberately narrow: local file import and a focus
 
 ## Why this isn't Monkeytype
 
-This project started from Monkeytype, an online typing website, as reference material. Its authentication, remote configuration, result upload, mixed legacy/Solid frontend, and existing custom-text assumptions made it a poor foundation for a local-first desktop product, so this app owns its own document model, persistence, desktop permissions, and typing session lifecycle from scratch. The old Monkeytype source was kept alongside this app for a while for comparison, then removed once it was no longer needed — it added ~2,100 files and 160+ MB to the repo with nothing here depending on it.
+This project started from Monkeytype, an online typing website, as reference material. Its authentication, remote configuration, result upload, mixed legacy/Solid frontend, and existing custom-text assumptions made it a poor foundation for a local-first desktop product, so this app owns its own document model, persistence, desktop permissions, and typing session lifecycle from scratch.
 
 ## Architecture
 
@@ -32,6 +32,7 @@ Solid renderer
   - continuous full-document typing view (click-anywhere-to-jump)
   - typing input and progress UI
   - optional virtual keyboard (key-press visualization)
+  - PDF/PPTX preview pane, tracking the typing cursor
 
 Renderer document core
   - text/HTML normalization
@@ -51,17 +52,19 @@ Renderer document core
 
 ## Document model
 
-`DocumentRecord` currently contains:
+`DocumentRecord` (persisted as JSON in Electron's `userData` directory — no native database dependency while the data model is still changing; SQLite should replace this once local history, migrations, and larger libraries are implemented):
 
-- stable id;
-- display title and source filename;
-- kind: text, html, or pdf;
+- stable id, display title, source filename;
+- source file path, when available — used to re-read the original file for PDF/PPTX preview. Records saved before this field existed have none; remove and re-import to get a preview.
+- kind: `text`, `html`, `pdf`, `docx`, or `pptx`;
 - normalized extracted text;
 - created/updated timestamps;
-- character cursor;
-- completion flag.
+- furthest-reached character cursor and a completion flag;
+- `sectionBreaks` (PDF/PPTX only): character offsets where each page/slide begins in `text`, for preview-pane cursor tracking. Records saved before this field existed have none; remove and re-import to get tracking.
 
-The MVP stores records as JSON in Electron's `userData` directory. This avoids a native database dependency while the data model is still changing. SQLite should replace this storage once local history, migrations, and larger libraries are implemented.
+## Text normalization
+
+`core/normalize.ts` collapses whitespace, normalizes line endings, and — deliberately broadly, not context-sensitively — spells out Greek letters and common math symbols as keyboardable English words (π → "pi", × → "times", √ → "square root", ...), since the point is to make imported text actually typable on a standard keyboard. A future parser could make this context-sensitive for technical notation instead of blanket substitution.
 
 ## Typing behavior
 
@@ -81,11 +84,9 @@ signal) so updating one character's result only re-renders that one span — wit
 now on screen, a plain signal would re-diff every character on every keystroke.
 
 Progress (the furthest position reached, used for the resume point and the % complete shown in
-the library) is saved with a 400ms debounce as you type, rather than only at passage boundaries
-as before — coarser passage-sized checkpoints were actually a lower save frequency, not a safety
-feature. Exact character-by-character correctness history isn't persisted across sessions
-(restarting or reopening a document clears red/green marks and session stats, matching the
-existing "Restarting a document resets session metrics" behavior); only the resume position is.
+the library) is saved with a 400ms debounce as you type. Exact character-by-character
+correctness history isn't persisted across sessions (restarting or reopening a document clears
+red/green marks and session stats); only the resume position is.
 
 An optional virtual keyboard in the library sidebar lights up each physical key as it's pressed
 (matched by `KeyboardEvent.code`, not `.key`, so it reflects physical position regardless of
@@ -93,24 +94,20 @@ Shift state) — collapsible, with the preference persisted locally.
 
 ### Preview-pane cursor tracking (PDF/PPTX)
 
-For kinds with a side preview pane (PDF pages, PPTX slides), extraction also returns
-`sectionBreaks`: the character offset in `text` where each page/slide begins, persisted on
-`DocumentRecord`. The preview pane uses it to compute which page/slide the typing cursor is
-currently in, draws a highlight ring around that page's/slide's card, and scrolls it into view —
-so clicking anywhere in the typing text to jump there also scrolls the preview to the matching
-page/slide, and typing forward through the document scrolls the preview along with it.
-Granularity is per-page/per-slide, not per-line or per-character — pixel-accurate tracking would
-need retaining every text item's bounding box through extraction and persistence, which is a much
-bigger lift for marginal benefit here. Documents imported before this existed have no
-`sectionBreaks` and simply show no highlight/scroll — re-import to get it.
+The preview pane uses `sectionBreaks` (see Document model) to compute which page/slide the
+typing cursor is currently in, draws a highlight ring around that page's/slide's card, and
+scrolls it into view — so clicking anywhere in the typing text to jump there also scrolls the
+preview to the matching page/slide, and typing forward through the document scrolls the preview
+along with it. Granularity is per-page/per-slide, not per-line or per-character — pixel-accurate
+tracking would need retaining every text item's bounding box through extraction and persistence,
+a much bigger lift for marginal benefit here.
 
-This needed one real bug fixed first: the preview's full re-render effect was keyed off the whole
-`props.document` object, which is a new object reference on every progress autosave (~every
-400ms while typing) even when nothing relevant changed — so the PDF/slide preview was fully
-clearing and re-rendering itself that often, visible as a distracting flash while typing. Fixed by
-memoizing `props.document.id` first and keying the heavy render effect off that memo instead of
-the object directly; the lightweight highlight/scroll effect is cheap enough that re-running it
-unnecessarily doesn't matter.
+The preview's full re-render effect (re-fetch + re-render every page/slide) is keyed off a
+*memoized* `props.document.id`, not the `document` object directly — that object gets a new
+reference on every progress autosave (~every 400ms while typing) even though nothing about the
+document's content changed, and keying off the object caused the preview to flash on every one
+of those. The lightweight highlight/scroll effect doesn't need this care; re-running it
+unnecessarily is cheap.
 
 ## Supported input
 
@@ -120,61 +117,18 @@ unnecessarily doesn't matter.
 - `.md` and `.markdown`
 - `.html`, `.htm`, `.xhtml`
 - `.docx` (via mammoth, raw text only — no styling/images)
-- `.pptx`: slide text becomes the typing passage; embedded images and equations render in a slide preview pane (see below), never as typing text
+- `.pptx`: slide text becomes typing text; the preview pane reconstructs each slide's actual layout (text and images positioned where they really are)
 - text-based `.pdf`
 
 ### PPTX handling in detail
 
-Slide text is pulled from every text-bearing shape and table cell, in slide order — the same "typable text vs. reference-only visuals" split as PDF, but lighter-weight:
+`core/pptx.ts` walks each slide's shape tree directly (`<p:sp>`, `<p:pic>`, one level of `<p:grpSp>` group — deeper nesting isn't handled) rather than sweeping all text/images flatly, because the preview needs each shape's actual position, not just its content:
 
-- **Images**: extracted from each slide's relationships and shown as a plain per-slide list in the preview pane — not a pixel-accurate reproduction of the slide layout. Legacy vector formats (EMF/WMF, common in older clip art) aren't renderable in a browser context and are skipped.
-- **Equations**: OOXML math (OMML) is structurally separate from slide text (it lives under its own XML namespace), so it's never pulled into the typing passage in the first place — no filtering step needed. For display, a hand-written converter (`core/omml.ts`) maps the common constructs (runs, fractions, super/subscripts, roots, delimiters, n-ary operators like sum/integral) to MathML, which Chromium renders natively with no extra library. Anything outside that subset (matrices, accents, exotic group characters) falls back to flattened plain text in the same slot, so rendering never breaks — it just loses the fancy layout for that one equation.
-- Deliberately not attempted: pixel-accurate slide rendering (would need a full layout+rendering engine or bundling something like headless LibreOffice, at odds with staying lightweight) and speaker notes (not "on the slide," so not part of the practice text).
-
-### Planned
-
-- scanned PDF OCR;
-- legacy `.doc`, `.odt`, `.rtf`;
-- EPUB;
-- image files;
-- PDF preview and extraction correction;
-- document-specific WPM, accuracy, and session history.
-
-## Milestones
-
-### Milestone 1: usable local practice
-
-- [x] Fresh Electron application.
-- [x] Local document persistence.
-- [x] Text and HTML extraction.
-- [x] PDF text extraction.
-- [x] Source/typing split view.
-- [x] Continuous whole-document typing with click-to-jump and debounced resume-position saves.
-- [x] Automated tests.
-
-### Milestone 2: reliable document workflow
-
-- Add preview before saving.
-- Preserve paragraph/page metadata.
-- Add extraction warnings and editable text.
-- Add SQLite migrations and local result history.
-- Add document search, rename, and archive.
-- Virtualize the typing view's character rendering if very large documents turn out to be slow in practice (see Known technical risks).
-
-### Milestone 3: broader formats
-
-- Add DOCX extraction with a dedicated parser.
-- Add EPUB extraction.
-- Add optional OCR worker for scanned documents.
-- Add PDF page preview and page navigation.
-
-## Immediate next coding tasks
-
-1. Install dependencies with the existing Node 18 environment.
-2. Run typecheck and fix Electron-vite/PDF.js declaration issues.
-3. Run the app and manually import a TXT file and a PDF.
-4. Add unit tests for normalization and extraction (done — see `core/*.test.ts`).
-5. Replace JSON persistence with a versioned repository abstraction before adding history.
+- **Position**: each shape's `<a:xfrm>` off/ext gives its EMU position, converted to a percentage of the slide's own size (read from `presentation.xml`'s `sldSz`, defaulting to 16:9 if absent) — rendered as absolutely-positioned elements over a fixed-aspect-ratio slide container. A shape *without* an explicit position (common for title/body placeholders, which inherit their position from the slide layout — a further inheritance chain this parser doesn't resolve) gets a plausible title-at-top or body-below-it guess instead of the real layout.
+- **Font size**: read from the first run's `sz` (hundredths of a point), converted to CSS container-query-width units (`cqw`) so text scales proportionally with the rendered slide size without any JS measurement.
+- **Images**: resolved via the slide's relationships file and embedded as data URIs, positioned like any other shape. Legacy vector formats (EMF/WMF, common in older clip art) aren't renderable in a browser context and are skipped.
+- **Equations**: OOXML math (OMML) is structurally separate from slide text (its own XML namespace), so it's never pulled into typing text in the first place — no filtering step needed. A paragraph containing one becomes its own block within its shape. For display, a hand-written converter (`core/omml.ts`) maps the common constructs (runs, fractions, super/subscripts, roots, delimiters, n-ary operators like sum/integral) to MathML, which Chromium renders natively with no extra library. Anything outside that subset (matrices, accents, exotic group characters) falls back to flattened plain text in the same slot, so rendering never breaks — it just loses the fancy layout for that one equation.
+- Deliberately not attempted: theme colors/fonts/effects, tables and charts (`<p:graphicFrame>`), placeholder-position inheritance from the slide layout/master, and speaker notes (not "on the slide," so not part of the practice text). This is a best-effort layout reconstruction, not a rendering engine — full fidelity would need one (or bundling something like headless LibreOffice), which contradicts staying lightweight.
 
 ## Known technical risks
 
@@ -184,45 +138,29 @@ Slide text is pulled from every text-bearing shape and table cell, in slide orde
 - JSON persistence is intentionally temporary and should not be treated as the final database layer.
 - The Electron package must keep remote content out of privileged renderer contexts.
 
-## Handoff status
+## Roadmap
 
-The workspace root is the whole application; there is no separate legacy source tree to reason about anymore.
+- Scanned PDF OCR.
+- Legacy `.doc`, `.odt`, `.rtf`, and EPUB import.
+- Image file import.
+- PDF preview: extraction correction, page navigation.
+- Persisted document-specific WPM/accuracy/session history (currently session-only).
+- Import preview before saving; preserve paragraph/page metadata; extraction warnings with editable text.
+- SQLite migrations and local result history, replacing the current JSON persistence.
+- Document search, rename, and archive in the library.
+- Virtualize the typing view's character rendering if large documents prove slow in practice.
 
-## Implementation status
+## Changelog
 
-Completed in the initial vertical slice:
+### 2026-09-27: PPTX real-layout preview
 
-- Electron main/preload/renderer structure.
-- Context-isolated desktop API for file picking and local JSON persistence.
-- SolidJS library and source/typing split view.
-- TXT, Markdown, HTML, and text-based PDF extraction.
-- PDF.js worker bundling with scripting disabled.
-- Continuous whole-document typing progress and restart.
-- Tailwind styling with project-local color tokens.
+Replaced the flat "list of extracted images" PPTX preview with an actual slide layout
+reconstruction — text and images positioned where they really are (see "PPTX handling in
+detail" above). The flat-list version made it impossible to tell which text corresponded to
+which image once extracted; this fixes that directly by showing them together, spatially, as
+authored.
 
-Validation in the current environment:
-
-- npm run typecheck passes.
-- npm run build passes.
-- npm run typecheck passes under Node 18.
-- npm run build passes under Node 18.
-- npm run dev starts Vite under Node 18. Electron may require the Linux chrome-sandbox helper to be owned by root with mode 4755; this is a host permission issue, not a Node requirement.
-
-## UX milestone
-
-The practice screen displays the whole document at once and tracks live WPM, accuracy, error count, and document progress per character. Restarting a document resets the session metrics.
-
-## Current UX and extraction milestone
-
-- The extracted source-text pane was removed from the practice workspace.
-- The typing workspace is central and wraps long passages without horizontal scrolling.
-- The library sidebar can be resized by dragging its divider.
-- PDF documents get a separate resizable rendered reference pane. PDF pages, diagrams, and images are visible there but are never part of the typing target.
-- PDF preview rereads the original file path saved with newly imported documents. Older records created before sourcePath was added should be removed and re-imported to enable preview.
-- Greek letters and common math symbols are normalized into keyboardable English names: pi, beta, alpha, infinity, times, square root, and similar names.
-- Symbol conversion is intentionally broad for the MVP; a future parser can make conversion context-sensitive for technical notation.
-
-## Continuous-typing milestone (2026-09-27)
+### 2026-09-27: Continuous whole-document typing
 
 Replaced the 420-character passage model with continuous whole-document typing (see "Typing
 behavior" above) — the passage cap was reported as a bug ("the document just stops"), and
@@ -238,3 +176,10 @@ overtyping past it silently broke rendering while stats kept updating. Also fixe
   that it looks right on screen.
 - Added a small virtual keyboard (`components/VirtualKeyboard.tsx`) in the library sidebar that
   lights up each key as it's physically pressed, collapsible via a "Hide"/"Show" toggle.
+
+### Earlier
+
+Removed `reference/monkeytype` (the old Monkeytype source, kept around briefly for comparison —
+2,100+ files and 160+ MB with nothing here depending on it) and the 420-character-passage-era
+UX notes (source/typing split view, resizable library sidebar, PDF reference pane) that this
+changelog's later entries have since superseded.

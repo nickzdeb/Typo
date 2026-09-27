@@ -133,7 +133,7 @@ async function extractDocxText(file: PickedFile): Promise<string> {
 
 async function extractPptxSlideTexts(file: PickedFile): Promise<string[]> {
   const { parsePptx } = await import("./pptx");
-  const slides = await parsePptx(file.bytes);
+  const { slides } = await parsePptx(file.bytes);
   // Equations and images are intentionally excluded here — they're shown in the
   // slide preview pane, never as typing text (see components/PptxPreview.tsx).
   return slides.map((slide) => normalizeDocumentText(slide.text));

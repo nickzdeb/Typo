@@ -1,6 +1,6 @@
 {
   "name": "document-typing-client",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Offline desktop typing practice for local documents.",
   "author": "nickzdeb",

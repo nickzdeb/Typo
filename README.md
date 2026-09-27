@@ -1,4 +1,4 @@
-# Document Trainer
+# Typo
 
 Offline desktop typing practice for documents stored on the local machine.
 
@@ -17,7 +17,7 @@ This app does not upload document content. Browser extensions, live webpages, OC
 
 Go to the [Releases page](https://github.com/nickzdeb/Typo/releases) and download the file for your operating system:
 
-- **Mac:** download the `.dmg`, open it, then drag **Document Trainer** into Applications. The first time you open it, macOS will say it's from an unidentified developer — right-click (or Control-click) the app and choose **Open**, then confirm. You only need to do this once.
+- **Mac:** download the `.dmg`, open it, then drag **Typo** into Applications. The first time you open it, macOS will say it's from an unidentified developer — right-click (or Control-click) the app and choose **Open**, then confirm. You only need to do this once.
 - **Windows:** download the `.exe` installer and run it. Windows SmartScreen may show a warning because the app isn't code-signed yet — click **More info**, then **Run anyway**.
 - **Linux:** download the `.AppImage` (make it executable and double-click or run it) or the `.deb` (double-click to install through your package manager).
 

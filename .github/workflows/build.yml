@@ -39,7 +39,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: document-trainer-${{ matrix.artifact }}
+          name: typo-${{ matrix.artifact }}
           path: |
             release/*.dmg
             release/*.zip

@@ -127,7 +127,7 @@ export function applyTheme(colors: ThemeColors): void {
   root.style.colorScheme = isDark(colors.canvas) ? "dark" : "light";
 }
 
-const storageKey = "documentTrainer.theme";
+const storageKey = "typo.theme";
 
 export function loadThemeState(): ThemeState {
   try {

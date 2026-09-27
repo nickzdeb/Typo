@@ -1,6 +1,6 @@
-# Document Trainer design and handoff
+# Typo design and handoff
 
-Updated: 2026-09-25
+Updated: 2026-09-27
 
 ## Product goal
 

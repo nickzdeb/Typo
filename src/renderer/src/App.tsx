@@ -189,7 +189,7 @@ export function App() {
       <header class="flex flex-wrap items-center justify-between gap-3 border-b border-panelMuted px-8 py-5">
         <div>
           <p class="text-xs uppercase tracking-[0.25em] text-accent">local typing practice</p>
-          <h1 class="mt-1 text-2xl font-semibold">Document Trainer</h1>
+          <h1 class="mt-1 text-2xl font-semibold">Typo</h1>
         </div>
         <div class="flex items-center gap-2">
           <ThemeSettings />

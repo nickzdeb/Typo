@@ -40,8 +40,8 @@
     "vitest": "^3.2.7"
   },
   "build": {
-    "appId": "com.typo.documenttrainer",
-    "productName": "Document Trainer",
+    "appId": "com.nickzdeb.typo",
+    "productName": "Typo",
     "copyright": "Copyright © 2026",
     "directories": {
       "output": "release"

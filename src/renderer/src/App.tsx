@@ -180,6 +180,7 @@ export function App() {
         updatedAt: now,
         cursor: 0,
         completed: false,
+        sectionBreaks: extracted.sectionBreaks,
       };
       await window.desktopApi.saveDocument(document);
       setDocuments((current) => [document, ...current]);
@@ -370,8 +371,8 @@ export function App() {
                 </article>
                 <Show when={hasSlideOrPagePreview(document().kind) && showPreview()}>
                   <div class="cursor-col-resize bg-panelMuted transition hover:bg-accent" onPointerDown={(event) => beginResize("preview", event)} />
-                  <Show when={document().kind === "pdf"}><PdfPreview document={document()} /></Show>
-                  <Show when={document().kind === "pptx"}><PptxPreview document={document()} /></Show>
+                  <Show when={document().kind === "pdf"}><PdfPreview document={document()} currentIndex={typingIndex()} /></Show>
+                  <Show when={document().kind === "pptx"}><PptxPreview document={document()} currentIndex={typingIndex()} /></Show>
                 </Show>
               </div>            </>}
           </Show>

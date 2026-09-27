@@ -11,6 +11,10 @@ export type DocumentRecord = {
   updatedAt: number;
   cursor: number;
   completed: boolean;
+  /** Character offsets in `text` where each PDF page / PPTX slide begins (first is always 0).
+   *  Lets the preview pane track and highlight which page/slide the typing cursor is in.
+   *  Undefined for kinds without that structure, and for documents imported before this existed. */
+  sectionBreaks?: number[];
 };
 
 export type PickedFile = {

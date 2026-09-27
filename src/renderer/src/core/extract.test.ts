@@ -18,11 +18,14 @@ vi.mock("mammoth", () => ({
 // gap should flow together as one paragraph; a much larger gap should start a new one.
 type MockItem = { str: string; transform: number[] };
 
-function textContentPage(items: MockItem[]) {
-  return { numPages: 1, getPage: async () => ({ getTextContent: async () => ({ items }) }) };
+function mockPdf(pages: MockItem[][]) {
+  return {
+    numPages: pages.length,
+    getPage: async (pageNumber: number) => ({ getTextContent: async () => ({ items: pages[pageNumber - 1] }) }),
+  };
 }
 
-let mockPdfPage: ReturnType<typeof textContentPage> | undefined;
+let mockPdfPage: ReturnType<typeof mockPdf> | undefined;
 
 vi.mock("pdfjs-dist", () => ({
   getDocument: () => ({ promise: Promise.resolve(mockPdfPage) }),
@@ -68,16 +71,45 @@ describe("extractDocument", () => {
   });
 
   it("flows a PDF's wrapped visual lines back into a paragraph, breaking only at a real paragraph gap", async () => {
-    mockPdfPage = textContentPage([
-      { str: "Alpha", transform: [1, 0, 0, 1, 10, 100] },
-      { str: "beta", transform: [1, 0, 0, 1, 10, 88] },
-      { str: "gamma", transform: [1, 0, 0, 1, 10, 76] },
-      { str: "delta", transform: [1, 0, 0, 1, 10, 64] },
-      { str: "Second", transform: [1, 0, 0, 1, 10, 24] }, // much larger gap: new paragraph
+    mockPdfPage = mockPdf([
+      [
+        { str: "Alpha", transform: [1, 0, 0, 1, 10, 100] },
+        { str: "beta", transform: [1, 0, 0, 1, 10, 88] },
+        { str: "gamma", transform: [1, 0, 0, 1, 10, 76] },
+        { str: "delta", transform: [1, 0, 0, 1, 10, 64] },
+        { str: "Second", transform: [1, 0, 0, 1, 10, 24] }, // much larger gap: new paragraph
+      ],
     ]);
     const bytes = new TextEncoder().encode("unused — pdfjs-dist is mocked");
     const result = await extractDocument(pickedFile("report.pdf", bytes));
     expect(result.kind).toBe("pdf");
     expect(result.text).toBe("Alpha beta gamma delta\n\nSecond");
+    expect(result.sectionBreaks).toEqual([0]);
+  });
+
+  it("reports a sectionBreaks offset per PDF page, matching the joined text exactly", async () => {
+    mockPdfPage = mockPdf([
+      [{ str: "First page text", transform: [1, 0, 0, 1, 10, 100] }],
+      [{ str: "Second page text", transform: [1, 0, 0, 1, 10, 100] }],
+    ]);
+    const bytes = new TextEncoder().encode("unused — pdfjs-dist is mocked");
+    const result = await extractDocument(pickedFile("multi.pdf", bytes));
+    expect(result.text).toBe("First page text\n\nSecond page text");
+    expect(result.sectionBreaks).toEqual([0, 17]); // "First page text".length (15) + "\n\n".length (2)
+    expect(result.text.slice(result.sectionBreaks![1])).toBe("Second page text");
+  });
+
+  it("reports a sectionBreaks offset per PPTX slide, matching the joined text exactly", async () => {
+    vi.doMock("./pptx", () => ({
+      parsePptx: vi.fn(async () => [
+        { text: "Slide one text", images: [], equations: [] },
+        { text: "Slide two text", images: [], equations: [] },
+      ]),
+    }));
+    const bytes = new TextEncoder().encode("unused — pptx parsing is mocked");
+    const result = await extractDocument(pickedFile("deck.pptx", bytes));
+    expect(result.text).toBe("Slide one text\n\nSlide two text");
+    expect(result.sectionBreaks).toEqual([0, 16]); // "Slide one text".length (14) + "\n\n".length (2)
+    expect(result.text.slice(result.sectionBreaks![1])).toBe("Slide two text");
   });
 });

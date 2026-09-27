@@ -5,7 +5,21 @@ export type ExtractedDocument = {
   kind: DocumentKind;
   title: string;
   text: string;
+  sectionBreaks?: number[];
 };
+
+// Character offset where each already-normalized section (page/slide) starts once all
+// sections are joined by a blank line ("\n\n"), matching how extractPdfText/extractPptxText
+// build the final joined text below. The first offset is always 0.
+function sectionBreaksFor(sections: string[]): number[] {
+  const breaks: number[] = [];
+  let offset = 0;
+  for (const section of sections) {
+    breaks.push(offset);
+    offset += section.length + 2; // + "\n\n"
+  }
+  return breaks;
+}
 
 function isPdf(file: PickedFile): boolean {
   return /\.pdf$/i.test(file.name);
@@ -66,7 +80,7 @@ function extractHtmlText(source: string): string {
   return parsed.body?.innerText || parsed.body?.textContent || source;
 }
 
-async function extractPdfText(file: PickedFile): Promise<string> {
+async function extractPdfPages(file: PickedFile): Promise<string[]> {
   const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist");
   const worker = await import("pdfjs-dist/build/pdf.worker.mjs?url");
   GlobalWorkerOptions.workerSrc = worker.default;
@@ -103,10 +117,12 @@ async function extractPdfText(file: PickedFile): Promise<string> {
         lines.push({ y, text: item.str });
       }
     }
-    pages.push(joinPageLines(lines));
+    // Normalize per page (not after joining all pages) so the returned offsets exactly
+    // match the final displayed text — see sectionBreaksFor.
+    pages.push(normalizeDocumentText(joinPageLines(lines)));
   }
 
-  return pages.join("\n\n");
+  return pages;
 }
 
 async function extractDocxText(file: PickedFile): Promise<string> {
@@ -115,26 +131,31 @@ async function extractDocxText(file: PickedFile): Promise<string> {
   return result.value;
 }
 
-async function extractPptxText(file: PickedFile): Promise<string> {
+async function extractPptxSlideTexts(file: PickedFile): Promise<string[]> {
   const { parsePptx } = await import("./pptx");
   const slides = await parsePptx(file.bytes);
   // Equations and images are intentionally excluded here — they're shown in the
   // slide preview pane, never as typing text (see components/PptxPreview.tsx).
-  return slides.map((slide) => slide.text).join("\n\n");
+  return slides.map((slide) => normalizeDocumentText(slide.text));
 }
 
 export async function extractDocument(file: PickedFile): Promise<ExtractedDocument> {
   let text: string;
   let kind: DocumentKind;
+  let sectionBreaks: number[] | undefined;
   if (isPdf(file)) {
     kind = "pdf";
-    text = await extractPdfText(file);
+    const pages = await extractPdfPages(file);
+    text = pages.join("\n\n");
+    sectionBreaks = sectionBreaksFor(pages);
   } else if (isDocx(file)) {
     kind = "docx";
     text = await extractDocxText(file);
   } else if (isPptx(file)) {
     kind = "pptx";
-    text = await extractPptxText(file);
+    const slides = await extractPptxSlideTexts(file);
+    text = slides.join("\n\n");
+    sectionBreaks = sectionBreaksFor(slides);
   } else {
     if (!isHtml(file) && !isPlainText(file)) {
       throw new Error("Unsupported file type. Choose TXT, Markdown, HTML, DOCX, PPTX, or PDF.");
@@ -143,5 +164,5 @@ export async function extractDocument(file: PickedFile): Promise<ExtractedDocume
     kind = isHtml(file) ? "html" : "text";
     text = isHtml(file) ? extractHtmlText(source) : source;
   }
-  return { kind, title: file.name, text: normalizeDocumentText(text) };
+  return { kind, title: file.name, text: normalizeDocumentText(text), sectionBreaks };
 }

@@ -91,6 +91,27 @@ An optional virtual keyboard in the library sidebar lights up each physical key 
 (matched by `KeyboardEvent.code`, not `.key`, so it reflects physical position regardless of
 Shift state) — collapsible, with the preference persisted locally.
 
+### Preview-pane cursor tracking (PDF/PPTX)
+
+For kinds with a side preview pane (PDF pages, PPTX slides), extraction also returns
+`sectionBreaks`: the character offset in `text` where each page/slide begins, persisted on
+`DocumentRecord`. The preview pane uses it to compute which page/slide the typing cursor is
+currently in, draws a highlight ring around that page's/slide's card, and scrolls it into view —
+so clicking anywhere in the typing text to jump there also scrolls the preview to the matching
+page/slide, and typing forward through the document scrolls the preview along with it.
+Granularity is per-page/per-slide, not per-line or per-character — pixel-accurate tracking would
+need retaining every text item's bounding box through extraction and persistence, which is a much
+bigger lift for marginal benefit here. Documents imported before this existed have no
+`sectionBreaks` and simply show no highlight/scroll — re-import to get it.
+
+This needed one real bug fixed first: the preview's full re-render effect was keyed off the whole
+`props.document` object, which is a new object reference on every progress autosave (~every
+400ms while typing) even when nothing relevant changed — so the PDF/slide preview was fully
+clearing and re-rendering itself that often, visible as a distracting flash while typing. Fixed by
+memoizing `props.document.id` first and keying the heavy render effect off that memo instead of
+the object directly; the lightweight highlight/scroll effect is cheap enough that re-running it
+unnecessarily doesn't matter.
+
 ## Supported input
 
 ### Implemented now

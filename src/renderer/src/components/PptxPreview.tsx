@@ -1,17 +1,41 @@
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import type { DocumentRecord } from "../../../shared/types";
 
 type PptxPreviewProps = {
   document: DocumentRecord;
+  currentIndex: number;
 };
+
+// Which entry in `breaks` (sorted ascending) contains `index` — the last break <= index.
+// `breaks[0]` is always 0, so this always resolves to a valid section.
+function sectionForIndex(breaks: number[], index: number): number {
+  let section = 0;
+  for (let i = 0; i < breaks.length; i++) {
+    if (breaks[i] <= index) section = i;
+    else break;
+  }
+  return section;
+}
 
 export function PptxPreview(props: PptxPreviewProps) {
   let previewRoot: HTMLDivElement | undefined;
   const [status, setStatus] = createSignal("Loading slide preview…");
+  // Indexed by slide number (not by rendered-card position — most slides have no
+  // image/equation and render no card at all, so this can have holes).
+  let slideElements: (HTMLDivElement | undefined)[] = [];
+  let highlightedSlide = -1;
+
+  // Only the document's identity should trigger a full re-parse + re-render of every
+  // slide's images/equations. props.document is a new object reference on every progress
+  // autosave (~every 400ms while typing) even though it's the same document — without this
+  // memo, the effect below re-ran on every one of those, causing a visible flash on every save.
+  const documentId = createMemo(() => props.document.id);
 
   async function renderSlides(documentId: string): Promise<void> {
     if (previewRoot === undefined) return;
     previewRoot.replaceChildren();
+    slideElements = [];
+    highlightedSlide = -1;
     setStatus("Loading slide preview…");
     const bytes = await window.desktopApi.readSource(documentId);
     if (bytes === null) {
@@ -32,7 +56,7 @@ export function PptxPreview(props: PptxPreviewProps) {
       if (slide.images.length === 0 && slide.equations.length === 0) return;
 
       const card = document.createElement("div");
-      card.className = "space-y-3 rounded-lg bg-ink p-3 shadow";
+      card.className = "space-y-3 rounded-lg bg-ink p-3 shadow ring-2 ring-transparent transition";
 
       const label = document.createElement("p");
       label.className = "text-xs uppercase tracking-wide text-muted";
@@ -57,13 +81,39 @@ export function PptxPreview(props: PptxPreviewProps) {
       }
 
       previewRoot?.append(card);
+      slideElements[index] = card;
     });
+    syncHighlight();
+  }
+
+  function syncHighlight(): void {
+    // Both read unconditionally, before any early return, so Solid always tracks them as
+    // this effect's dependencies — an early return skipping one would silently stop this
+    // effect from re-running when only that one later changes.
+    const currentIndex = props.currentIndex;
+    const breaks = props.document.sectionBreaks;
+    if (breaks === undefined || breaks.length === 0) return;
+    const slide = sectionForIndex(breaks, currentIndex);
+    if (slide === highlightedSlide) return;
+    slideElements[highlightedSlide]?.classList.replace("ring-accent", "ring-transparent");
+    const target = slideElements[slide];
+    target?.classList.replace("ring-transparent", "ring-accent");
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    highlightedSlide = slide;
   }
 
   createEffect(() => {
-    void renderSlides(props.document.id).catch((error) => {
+    void renderSlides(documentId()).catch((error) => {
       setStatus(error instanceof Error ? error.message : "Could not render this presentation.");
     });
+  });
+
+  // Lightweight: only toggles an existing element's class and scrolls — never re-fetches
+  // or re-renders a slide, so this can react to every keystroke without flashing.
+  createEffect(syncHighlight);
+
+  onCleanup(() => {
+    slideElements = [];
   });
 
   return (

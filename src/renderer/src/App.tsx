@@ -159,7 +159,7 @@ export function App() {
     setIncorrectCount(0);
     setSessionStartedAt(undefined);
     setShowPreview(hasSlideOrPagePreview(document.kind));
-    setMessage(document.completed ? "This document is complete. Restart it whenever you want." : "Click anywhere in the text to start typing from there.");
+    setMessage(document.completed ? "This document is complete. Restart it whenever you want." : "");
     focusInput();
   }
 
@@ -187,7 +187,7 @@ export function App() {
       await window.desktopApi.saveDocument(document);
       setDocuments((current) => [document, ...current]);
       selectDocument(document);
-      setMessage("Imported " + document.title + ". Click anywhere in the text to start typing from there.");
+      setMessage("Imported " + document.title + ".");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Import failed.");
     } finally {
@@ -400,7 +400,9 @@ export function App() {
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setIsFocused(false)}
                   />
-                  <p class="mt-4 text-sm text-muted">{message()}</p>
+                  <Show when={message().length > 0}>
+                    <p class="mt-4 text-sm text-muted">{message()}</p>
+                  </Show>
                 </article>
                 <Show when={hasSlideOrPagePreview(document().kind) && showPreview()}>
                   <div class="cursor-col-resize bg-panelMuted transition hover:bg-accent" onPointerDown={(event) => beginResize("preview", event)} />

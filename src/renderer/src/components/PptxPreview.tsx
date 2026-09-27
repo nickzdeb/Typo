@@ -141,10 +141,6 @@ export function PptxPreview(props: PptxPreviewProps) {
           )}
         </Show>
       </div>
-      <p class="mt-3 text-xs text-muted">
-        A best-effort layout reconstruction from the slide XML (text and images positioned where they really are) — not part of the typing text. Fonts, colors, and effects
-        aren't replicated; placeholders without an explicit position use a plausible title/body guess instead of the real layout.
-      </p>
     </article>
   );
 }

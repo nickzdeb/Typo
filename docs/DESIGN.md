@@ -171,6 +171,21 @@ future layout changes.
 
 ## Changelog
 
+### 2026-09-27: Focus-overlay position tracked scroll, not logical content position
+
+The "Click here or start typing to continue" overlay was a child of the *scrollable* typing
+box with `absolute inset-0`. For an absolutely-positioned element inside a scrolling ancestor,
+`inset-0` covers that ancestor's box **at its own unscrolled position** — it scrolls away with
+the content, so it doesn't track "wherever the box is currently scrolled to". After the caret
+auto-scroll (above) moved the box to a resume position elsewhere in the document, the overlay
+could end up positioned entirely off-screen, or — for a document near its start — visibly
+pinned over the first paragraph, blocking clicks there specifically, no matter how far you'd
+actually scrolled. Fixed by moving the overlay to a non-scrolling wrapper *around* the
+scrollable box instead of inside it, so its `inset-0` always matches the box's real on-screen
+position, and making it `pointer-events-none` so clicks simply pass through to whatever's
+actually underneath (a character, or empty space) rather than needing the overlay itself to
+forward them correctly.
+
 ### 2026-09-27: Scroll containment, caret auto-scroll, PPTX text overflow
 
 Fixed three issues found testing the PPTX real-layout preview against a real deck:

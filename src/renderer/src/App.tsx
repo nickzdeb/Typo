@@ -346,33 +346,46 @@ export function App() {
                   <div class="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {[["wpm", metrics().wpm.toFixed(0)], ["accuracy", metrics().accuracy.toFixed(0) + "%"], ["errors", String(metrics().errors)], ["progress", Math.round(progress() * 100) + "%"]].map(([label, value]) => <div class="rounded-lg bg-panelMuted px-3 py-2"><div class="text-xs uppercase tracking-wide text-muted">{label}</div><div class="mt-1 text-lg font-semibold text-ink">{value}</div></div>)}
                   </div>
-                  <div
-                    ref={typingScrollRef}
-                    class={cn(
-                      "relative min-h-40 flex-1 cursor-text overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-panelMuted p-5 font-mono text-lg leading-9 outline-none transition",
-                      isFocused() ? "ring-2 ring-accent" : "ring-1 ring-transparent",
-                    )}
-                    onClick={focusInput}
-                  >
-                    <Index each={Array.from(document().text)}>
-                      {(character, index) => (
-                        <>
-                          <span
-                            id={index === typingIndex() ? "typing-caret" : undefined}
-                            class={cn(results[index] === "correct" ? "text-success" : results[index] === "incorrect" ? "bg-error/30 text-error" : index === typingIndex() ? "border-b-2 border-accent" : "text-muted")}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              jumpTo(index);
-                            }}
-                          >
-                            {character() === " " ? "·" : character() === "\n" ? "↵\n" : character()}
-                          </span>
-                          {character() === " " && <wbr />}
-                        </>
+                  {/*
+                    Outer wrapper is the positioning context for the "click to continue" overlay
+                    below — it does NOT scroll itself. The overlay used to be a child of the
+                    scrollable div with "absolute inset-0", which covers the box's unscrolled
+                    (logical) top-of-content, not wherever the box has actually scrolled to —
+                    so after auto-scrolling to a resume position, the overlay could sit far off
+                    -screen, or (starting near the top of a document) visibly pin itself over the
+                    first paragraph and never track further clicks correctly. Anchoring it to this
+                    non-scrolling wrapper instead means "inset-0" always matches the box's real
+                    on-screen bounds, regardless of internal scroll position.
+                  */}
+                  <div class="relative min-h-40 flex-1">
+                    <div
+                      ref={typingScrollRef}
+                      class={cn(
+                        "absolute inset-0 cursor-text overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-panelMuted p-5 font-mono text-lg leading-9 outline-none transition",
+                        isFocused() ? "ring-2 ring-accent" : "ring-1 ring-transparent",
                       )}
-                    </Index>
+                      onClick={focusInput}
+                    >
+                      <Index each={Array.from(document().text)}>
+                        {(character, index) => (
+                          <>
+                            <span
+                              id={index === typingIndex() ? "typing-caret" : undefined}
+                              class={cn(results[index] === "correct" ? "text-success" : results[index] === "incorrect" ? "bg-error/30 text-error" : index === typingIndex() ? "border-b-2 border-accent" : "text-muted")}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                jumpTo(index);
+                              }}
+                            >
+                              {character() === " " ? "·" : character() === "\n" ? "↵\n" : character()}
+                            </span>
+                            {character() === " " && <wbr />}
+                          </>
+                        )}
+                      </Index>
+                    </div>
                     <Show when={!isFocused()}>
-                      <div class="absolute inset-0 grid place-items-center rounded-lg bg-canvas/70 text-sm text-muted">
+                      <div class="pointer-events-none absolute inset-0 grid place-items-center rounded-lg bg-canvas/70 text-sm text-muted">
                         Click here or start typing to continue
                       </div>
                     </Show>

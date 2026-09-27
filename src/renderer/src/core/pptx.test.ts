@@ -94,6 +94,32 @@ describe("parsePptx", () => {
     expect(textbox.fontSizeCqw).toBeCloseTo((4400 / 100) * 12700 / 12192000 * 100, 3);
   });
 
+  it("shrinks the font size by PowerPoint's own normAutofit fontScale hint when present", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "ppt/slides/slide1.xml",
+      `<?xml version="1.0"?>
+<p:sld ${namespaces}>
+  <p:cSld>
+    <p:spTree>
+      <p:sp>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4572000" cy="1143000"/></a:xfrm></p:spPr>
+        <p:txBody>
+          <a:bodyPr><a:normAutofit fontScale="50000"/></a:bodyPr>
+          <a:p><a:r><a:rPr sz="4400"/><a:t>Shrunk to fit</a:t></a:r></a:p>
+        </p:txBody>
+      </p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>`,
+    );
+    const bytes = new Uint8Array(await zip.generateAsync({ type: "uint8array" }));
+    const { slides } = await parsePptx(bytes);
+    const textbox = slides[0].shapes.find(isTextbox)!;
+    // Same math as above, but at 50% (fontScale="50000" = 50%) of the nominal 44pt.
+    expect(textbox.fontSizeCqw).toBeCloseTo((4400 / 100) * 12700 / 12192000 * 100 * 0.5, 3);
+  });
+
   it("resolves an image's relationship and position, and reads its real bytes", async () => {
     const { slides } = await parsePptx(await buildFixture());
     const image = slides[0].shapes.find(isImage)!;

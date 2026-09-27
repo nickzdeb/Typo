@@ -88,6 +88,10 @@ the library) is saved with a 400ms debounce as you type. Exact character-by-char
 correctness history isn't persisted across sessions (restarting or reopening a document clears
 red/green marks and session stats); only the resume position is.
 
+The typing box auto-scrolls to keep the caret visible — as you type forward, on Backspace, and
+after a click-to-jump — via `lib/scrollIntoContainer.ts` (see "Preview-pane cursor tracking"
+below for why that's a hand-rolled helper and not `Element.scrollIntoView()`).
+
 An optional virtual keyboard in the library sidebar lights up each physical key as it's pressed
 (matched by `KeyboardEvent.code`, not `.key`, so it reflects physical position regardless of
 Shift state) — collapsible, with the preference persisted locally.
@@ -109,6 +113,21 @@ document's content changed, and keying off the object caused the preview to flas
 of those. The lightweight highlight/scroll effect doesn't need this care; re-running it
 unnecessarily is cheap.
 
+Scrolling to the current page/slide (and the typing box's own caret auto-scroll, above) goes
+through `lib/scrollIntoContainer.ts` rather than `Element.scrollIntoView()`. `scrollIntoView()`
+lets the browser pick which scrollable ancestor to move — and if any container in the chain
+isn't a genuine scroll boundary, it can scroll a completely different one instead. That's
+exactly what happened here: the outer layout used `min-h-[calc(100vh-89px)]` (a *minimum*) on
+the panel-holding grid, so every panel just grew to fit its content instead of being capped at
+the available height, and the whole *window* became the scroll container — calling
+`scrollIntoView()` on a slide card could scroll the entire page, shoving the typing box (a
+sibling element) out of view. Fixed the layout (flex column on `<main>`, `min-h-0 flex-1` on the
+content grid — no more hardcoded pixel height guess for where the header ends, either), and
+additionally replaced every `scrollIntoView()` call with `scrollIntoContainer()`, which computes
+the needed scroll purely from `getBoundingClientRect()` deltas and calls `.scrollTo()` on one
+named container — so it can never again escape into scrolling something else, regardless of
+future layout changes.
+
 ## Supported input
 
 ### Implemented now
@@ -125,7 +144,7 @@ unnecessarily is cheap.
 `core/pptx.ts` walks each slide's shape tree directly (`<p:sp>`, `<p:pic>`, one level of `<p:grpSp>` group — deeper nesting isn't handled) rather than sweeping all text/images flatly, because the preview needs each shape's actual position, not just its content:
 
 - **Position**: each shape's `<a:xfrm>` off/ext gives its EMU position, converted to a percentage of the slide's own size (read from `presentation.xml`'s `sldSz`, defaulting to 16:9 if absent) — rendered as absolutely-positioned elements over a fixed-aspect-ratio slide container. A shape *without* an explicit position (common for title/body placeholders, which inherit their position from the slide layout — a further inheritance chain this parser doesn't resolve) gets a plausible title-at-top or body-below-it guess instead of the real layout.
-- **Font size**: read from the first run's `sz` (hundredths of a point), converted to CSS container-query-width units (`cqw`) so text scales proportionally with the rendered slide size without any JS measurement.
+- **Font size**: read from the first run's `sz` (hundredths of a point), converted to CSS container-query-width units (`cqw`) so text scales proportionally with the rendered slide size without any JS measurement; multiplied by PowerPoint's own shrink-to-fit hint (`<a:normAutofit fontScale="...">`) when present. Plenty of real slides have no explicit `sz` at all (inherited from the slide layout/master's bullet-level styles, which this parser doesn't resolve either) and no autofit hint, so the fallback can still be wrong — `PptxPreview.tsx` also measures actual overflow after rendering and shrinks further until the text fits its box, which is correct regardless of *why* the size guess was off (wrong fallback, a different font's line-wrapping than the original, or no autofit hint to begin with).
 - **Images**: resolved via the slide's relationships file and embedded as data URIs, positioned like any other shape. Legacy vector formats (EMF/WMF, common in older clip art) aren't renderable in a browser context and are skipped.
 - **Equations**: OOXML math (OMML) is structurally separate from slide text (its own XML namespace), so it's never pulled into typing text in the first place — no filtering step needed. A paragraph containing one becomes its own block within its shape. For display, a hand-written converter (`core/omml.ts`) maps the common constructs (runs, fractions, super/subscripts, roots, delimiters, n-ary operators like sum/integral) to MathML, which Chromium renders natively with no extra library. Anything outside that subset (matrices, accents, exotic group characters) falls back to flattened plain text in the same slot, so rendering never breaks — it just loses the fancy layout for that one equation.
 - Deliberately not attempted: theme colors/fonts/effects, tables and charts (`<p:graphicFrame>`), placeholder-position inheritance from the slide layout/master, and speaker notes (not "on the slide," so not part of the practice text). This is a best-effort layout reconstruction, not a rendering engine — full fidelity would need one (or bundling something like headless LibreOffice), which contradicts staying lightweight.
@@ -151,6 +170,28 @@ unnecessarily is cheap.
 - Virtualize the typing view's character rendering if large documents prove slow in practice.
 
 ## Changelog
+
+### 2026-09-27: Scroll containment, caret auto-scroll, PPTX text overflow
+
+Fixed three issues found testing the PPTX real-layout preview against a real deck:
+
+- **The typing box never scrolled to follow the caret.** Typing forward, Backspace, and
+  click-to-jump all moved `typingIndex` correctly, but nothing kept the caret in the visible
+  area — added an effect that does, via `scrollIntoContainer` (see "Preview-pane cursor
+  tracking" above).
+- **The preview's auto-scroll could scroll the whole window instead of its own panel**,
+  dragging the typing text out of view — root-caused to a real layout bug (`min-h-*` instead of
+  a hard cap, so nothing actually constrained panel height to the viewport) and fixed at the
+  layout level, then hardened by replacing every `scrollIntoView()` with the same
+  `scrollIntoContainer` helper so this class of bug can't recur even if the layout changes
+  again later.
+- **PPTX text was overflowing and getting clipped** — confirmed by zooming into the actual
+  rendered output, not just reasoning about it: PowerPoint's own `normAutofit` fontScale hint
+  was being ignored, and (the bigger factor) plenty of real body text has no explicit font size
+  at all, inherited instead from the slide layout/master's bullet-level styles, which this
+  parser doesn't resolve — so the fallback guess was too large. Fixed with the fontScale hint
+  where present, plus an empirical measure-and-shrink pass in `PptxPreview.tsx` that's correct
+  regardless of why the size guess was wrong.
 
 ### 2026-09-27: PPTX real-layout preview
 

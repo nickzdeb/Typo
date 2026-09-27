@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import type { DocumentRecord } from "../../../shared/types";
+import { scrollIntoContainer } from "../lib/scrollIntoContainer";
 
 type PdfPreviewProps = {
   document: DocumentRecord;
@@ -83,7 +84,9 @@ export function PdfPreview(props: PdfPreviewProps) {
     if (section === highlightedIndex) return;
     pageElements[highlightedIndex]?.classList.replace("ring-accent", "ring-transparent");
     pageElements[section]?.classList.replace("ring-transparent", "ring-accent");
-    pageElements[section]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (previewRoot !== undefined && pageElements[section] !== undefined) {
+      scrollIntoContainer(previewRoot, pageElements[section], "center");
+    }
     highlightedIndex = section;
   }
 

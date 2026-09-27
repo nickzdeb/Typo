@@ -1,9 +1,10 @@
-import { For, Index, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Index, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { DocumentRecord } from "../../shared/types";
 import { extractDocument } from "./core/extract";
 import { normalizeDocumentText, wordCount } from "./core/normalize";
 import { cn } from "./lib/cn";
+import { scrollIntoContainer } from "./lib/scrollIntoContainer";
 import { PdfPreview } from "./components/PdfPreview";
 import { PptxPreview } from "./components/PptxPreview";
 import { ThemeSettings } from "./components/ThemeSettings";
@@ -24,6 +25,7 @@ function newId(): string {
 
 export function App() {
   let inputRef: HTMLTextAreaElement | undefined;
+  let typingScrollRef: HTMLDivElement | undefined;
   const [documents, setDocuments] = createSignal<DocumentRecord[]>([]);
   const [selectedId, setSelectedId] = createSignal<string>();
   const [results, setResults] = createStore<CharResult[]>([]);
@@ -235,6 +237,15 @@ export function App() {
     focusInput();
   }
 
+  // Keep the caret in view as it moves — from typing forward, from Backspace, or from a
+  // click-to-jump. id="typing-caret" is only ever on the one span matching typingIndex().
+  createEffect(() => {
+    typingIndex();
+    if (typingScrollRef === undefined) return;
+    const caret = document.getElementById("typing-caret");
+    if (caret !== null) scrollIntoContainer(typingScrollRef, caret, "nearest");
+  });
+
   function handleKeyDown(event: KeyboardEvent): void {
     const document = selected();
     if (document === undefined) return;
@@ -267,8 +278,8 @@ export function App() {
   }
 
   return (
-    <main class="min-h-screen bg-canvas text-ink">
-      <header class="flex flex-wrap items-center justify-between gap-3 border-b border-panelMuted px-8 py-5">
+    <main class="flex h-screen flex-col bg-canvas text-ink">
+      <header class="flex flex-shrink-0 flex-wrap items-center justify-between gap-3 border-b border-panelMuted px-8 py-5">
         <div>
           <p class="text-xs uppercase tracking-[0.25em] text-accent">local typing practice</p>
           <h1 class="mt-1 text-2xl font-semibold">Typo</h1>
@@ -281,7 +292,14 @@ export function App() {
         </div>
       </header>
 
-      <div class="grid min-h-[calc(100vh-89px)]" style={{ "grid-template-columns": sidebarWidth() + "px 8px minmax(0, 1fr)" }}>
+      {/*
+        min-h-0 + flex-1 here (not min-h-[calc(100vh-...)] on <main>, which was the actual bug):
+        without min-h-0, a flex/grid item defaults to sizing itself to fit its content instead of
+        the space actually available, so every "overflow-y-auto" panel below just grew to fit ALL
+        its content and never had anything to scroll internally — the whole window scrolled
+        instead, which is what dragged the typing text out of view when the preview auto-scrolled.
+      */}
+      <div class="grid min-h-0 flex-1" style={{ "grid-template-columns": sidebarWidth() + "px 8px minmax(0, 1fr)" }}>
         <aside class="flex flex-col border-r border-panelMuted bg-panel px-4 py-5">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-muted">Library</h2>
@@ -329,6 +347,7 @@ export function App() {
                     {[["wpm", metrics().wpm.toFixed(0)], ["accuracy", metrics().accuracy.toFixed(0) + "%"], ["errors", String(metrics().errors)], ["progress", Math.round(progress() * 100) + "%"]].map(([label, value]) => <div class="rounded-lg bg-panelMuted px-3 py-2"><div class="text-xs uppercase tracking-wide text-muted">{label}</div><div class="mt-1 text-lg font-semibold text-ink">{value}</div></div>)}
                   </div>
                   <div
+                    ref={typingScrollRef}
                     class={cn(
                       "relative min-h-40 flex-1 cursor-text overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-panelMuted p-5 font-mono text-lg leading-9 outline-none transition",
                       isFocused() ? "ring-2 ring-accent" : "ring-1 ring-transparent",
@@ -339,6 +358,7 @@ export function App() {
                       {(character, index) => (
                         <>
                           <span
+                            id={index === typingIndex() ? "typing-caret" : undefined}
                             class={cn(results[index] === "correct" ? "text-success" : results[index] === "incorrect" ? "bg-error/30 text-error" : index === typingIndex() ? "border-b-2 border-accent" : "text-muted")}
                             onClick={(event) => {
                               event.stopPropagation();

@@ -2,6 +2,7 @@ import { For, Index, Show, createEffect, createMemo, createSignal } from "solid-
 import type { DocumentRecord } from "../../../shared/types";
 import type { PptxDocument } from "../core/pptx";
 import { cn } from "../lib/cn";
+import { scrollIntoContainer } from "../lib/scrollIntoContainer";
 
 type PptxPreviewProps = {
   document: DocumentRecord;
@@ -19,9 +20,32 @@ function sectionForIndex(breaks: number[], index: number): number {
   return section;
 }
 
+// PowerPoint tracks a shrink-to-fit scale (<a:normAutofit fontScale="...">) for text that
+// doesn't fit its placeholder at nominal size, which core/pptx.ts already applies when
+// present — but plenty of real slides have no explicit font size at all (inherited from the
+// slide layout/master's bullet-level styles, which this parser doesn't resolve) and no
+// normAutofit hint either, so the fallback size can still overflow. Rather than trying to
+// exactly replicate PowerPoint's theme-inheritance chain, measure the actual rendered
+// overflow and shrink until it fits — correct regardless of *why* the original guess was too
+// big (wrong fallback size, a different font's line-wrapping, or no autofit hint).
+function fitTextBox(element: HTMLDivElement): void {
+  requestAnimationFrame(() => {
+    const original = Number.parseFloat(getComputedStyle(element).fontSize);
+    if (!Number.isFinite(original) || original <= 0) return;
+    let current = original;
+    let attempts = 0;
+    while (element.scrollHeight > element.clientHeight + 1 && current > original * 0.45 && attempts < 12) {
+      current *= 0.92;
+      element.style.fontSize = `${current}px`;
+      attempts++;
+    }
+  });
+}
+
 export function PptxPreview(props: PptxPreviewProps) {
   const [status, setStatus] = createSignal("Loading slide preview…");
   const [pptx, setPptx] = createSignal<PptxDocument>();
+  let scrollRoot: HTMLDivElement | undefined;
   let slideRefs: (HTMLDivElement | undefined)[] = [];
 
   // Only the document's identity should trigger a full re-parse of every slide. props.document
@@ -60,7 +84,8 @@ export function PptxPreview(props: PptxPreviewProps) {
   // Cheap (just scrolls an already-rendered element) — reacts to every keystroke without
   // re-triggering the full parse/render above.
   createEffect(() => {
-    slideRefs[currentSlide()]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const target = slideRefs[currentSlide()];
+    if (scrollRoot !== undefined && target !== undefined) scrollIntoContainer(scrollRoot, target, "center");
   });
 
   return (
@@ -69,7 +94,7 @@ export function PptxPreview(props: PptxPreviewProps) {
         <p class="text-xs uppercase tracking-wide text-muted">slide preview</p>
         <span class="text-xs text-muted">{status()}</span>
       </div>
-      <div class="min-h-0 flex-1 space-y-4 overflow-auto pr-1">
+      <div ref={scrollRoot} class="min-h-0 flex-1 space-y-4 overflow-auto pr-1">
         <Show when={pptx()}>
           {(doc) => (
             <Index each={doc().slides}>
@@ -92,6 +117,7 @@ export function PptxPreview(props: PptxPreviewProps) {
                         />
                       ) : (
                         <div
+                          ref={fitTextBox}
                           class="absolute overflow-hidden text-[#1a1a1a]"
                           style={{
                             left: `${shape.left}%`,

@@ -126,6 +126,17 @@ function firstFontSize(txBody: Element): number | undefined {
   return undefined;
 }
 
+// PowerPoint's own "shrink text on overflow" hint, in thousandths of a percent
+// (fontScale="77500" = 77.5%). Absent (or an <a:normAutofit/> with no attribute) means 100%.
+function autofitScale(txBody: Element): number {
+  const bodyPr = firstChildNamed(txBody, "bodyPr");
+  const normAutofit = bodyPr !== undefined ? firstChildNamed(bodyPr, "normAutofit") : undefined;
+  const fontScale = normAutofit?.getAttribute("fontScale");
+  if (fontScale === null || fontScale === undefined) return 1;
+  const value = Number(fontScale) / 100000;
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
 function extractBlocks(txBody: Element): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   let pendingLines: string[] = [];
@@ -164,7 +175,7 @@ function buildTextboxShape(sp: Element, box: Box | undefined, slideWidthEmu: num
   const isTitle = placeholderType(sp) === "title" || placeholderType(sp) === "ctrTitle";
   const resolvedBox = box ?? fallbackBox(isTitle, cursor);
   const sz = firstFontSize(txBody) ?? (isTitle ? 4400 : 2800);
-  const fontSizeCqw = ((sz / 100) * emuPerPoint / slideWidthEmu) * 100;
+  const fontSizeCqw = ((sz / 100) * emuPerPoint / slideWidthEmu) * 100 * autofitScale(txBody);
   return { kind: "textbox", ...resolvedBox, fontSizeCqw, blocks };
 }
 

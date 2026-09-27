@@ -4,14 +4,14 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        canvas: "#101216",
-        panel: "#191d24",
-        panelMuted: "#222832",
-        ink: "#f1f3f5",
-        muted: "#a7b0bd",
-        accent: "#8ab4ff",
-        success: "#8bd5a3",
-        error: "#ff9b9b",
+        canvas: "var(--color-canvas)",
+        panel: "var(--color-panel)",
+        panelMuted: "var(--color-panel-muted)",
+        ink: "var(--color-ink)",
+        muted: "var(--color-muted)",
+        accent: "var(--color-accent)",
+        success: "var(--color-success)",
+        error: "var(--color-error)",
       },
     },
   },

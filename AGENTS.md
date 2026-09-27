@@ -1,8 +1,22 @@
 # Project instructions
 
 - Keep communication concise.
-- This is a standalone Electron + SolidJS desktop app; the old Monkeytype project lives under reference/monkeytype.
-- New UI uses TSX and Tailwind CSS. Use class attributes, the cn utility, and project colors from tailwind.config.cjs. Do not use classList.
-- Keep the renderer context-isolated and avoid exposing raw filesystem or IPC APIs.
-- Run npm run typecheck and npm run build after changes.
-- Prefer focused tests for document normalization, extraction, and typing-session behavior.
+- This is a standalone Electron + SolidJS desktop app. There is no legacy/reference project in this repo — everything under `src/` and `electron/` is the current app.
+- UI uses TSX and Tailwind CSS. Use class attributes, the `cn` utility, and the color tokens in `tailwind.config.cjs` (which resolve to CSS variables set by `src/renderer/src/core/theme.ts`, not fixed hex values). Do not use `classList`.
+- Keep the renderer context-isolated (`contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`) and avoid exposing raw filesystem or IPC APIs from `electron/preload.ts` — add a narrow, named function per capability instead.
+- Run `npm run typecheck`, `npm run test`, and `npm run build` after changes.
+- Prefer focused unit tests (`*.test.ts` next to the module, run by vitest) for pure logic: document normalization, extraction, and passage/typing-session math. UI components don't need unit tests.
+
+## Where things live
+
+- `electron/main.ts` — main process: file picker, JSON document persistence under Electron's userData dir, IPC handlers. `electron/preload.ts` mirrors each handler as a typed `window.desktopApi` function.
+- `src/shared/types.ts` — types shared between main and renderer (`DocumentRecord`, `DesktopApi`, ...). Add new IPC surface here first.
+- `src/renderer/src/core/` — pure, framework-free logic: `extract.ts` (file → text per format), `normalize.ts` (text cleanup), `theme.ts` (color presets/CSS vars). This is where most "add a feature" work belongs, and it's the easiest code to unit test.
+- `src/renderer/src/components/` — Solid UI components (`PdfPreview.tsx`, `ThemeSettings.tsx`, ...).
+- `src/renderer/src/App.tsx` — top-level layout and session state (library, passage cursor, typing metrics, resizable panes).
+
+## Adding a feature (common cases)
+
+- **New importable file format:** add a detector + extractor function in `core/extract.ts`, extend `isPdf`/`isHtml`/`isPlainText`-style checks, add the extension to the file-picker filter in `electron/main.ts`.
+- **New theme:** add an entry to the `presets` array in `core/theme.ts` — the settings UI picks it up automatically.
+- **New IPC capability:** add the handler in `electron/main.ts`, expose it in `electron/preload.ts`, add its type to `DesktopApi` in `src/shared/types.ts`.

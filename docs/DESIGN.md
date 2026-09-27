@@ -8,11 +8,9 @@ Create a local desktop application that lets a user choose a document, read it w
 
 The first product boundary is deliberately narrow: local file import and a focused typing environment. Live webpage capture and browser-extension permissions are excluded for now.
 
-## Why the project moved away from Monkeytype
+## Why this isn't Monkeytype
 
-Monkeytype is useful reference material, but its application boundary is an online typing website. Its authentication, remote configuration, result upload, mixed legacy/Solid frontend, and existing custom-text assumptions make it a poor foundation for a local-first desktop product.
-
-The old project was moved, not deleted, to `reference/monkeytype`. The new app owns its document model, persistence, desktop permissions, and typing session lifecycle.
+This project started from Monkeytype, an online typing website, as reference material. Its authentication, remote configuration, result upload, mixed legacy/Solid frontend, and existing custom-text assumptions made it a poor foundation for a local-first desktop product, so this app owns its own document model, persistence, desktop permissions, and typing session lifecycle from scratch. The old Monkeytype source was kept alongside this app for a while for comparison, then removed once it was no longer needed — it added ~2,100 files and 160+ MB to the repo with nothing here depending on it.
 
 ## Architecture
 
@@ -144,7 +142,7 @@ Progress is committed when a passage is completed. If the app closes mid-passage
 
 ## Handoff status
 
-The current workspace root is the new application. The old Monkeytype source is under reference/monkeytype; its dependency directories were removed because they are reproducible from its lockfiles. No old source files were deleted.
+The workspace root is the whole application; there is no separate legacy source tree to reason about anymore.
 
 ## Implementation status
 

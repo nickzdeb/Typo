@@ -50,8 +50,12 @@ Cross-compiling for another OS from your current machine is unreliable (Windows/
 
 Push a tag starting with `v` (e.g. `v0.2.0`) and GitHub Actions builds installers for Mac, Windows, and Linux and attaches them to a new GitHub Release automatically. You can also trigger a build without releasing from the Actions tab (`Build desktop app` → `Run workflow`).
 
-## Reference material
+## Contributing
 
-The previous Monkeytype project is preserved in [reference/monkeytype](./reference/monkeytype). It is not part of the new build. Its typing behavior and earlier document prototype are available for comparison only.
+The codebase is deliberately small and split by concern so it's easy to extend:
 
-See [docs/DESIGN.md](./docs/DESIGN.md) for architecture, decisions, milestones, and future work.
+- `src/renderer/src/core/` holds plain, framework-free logic (file extraction, text normalization, theming) — this is where most new features start, and it's the easiest code to unit test.
+- `src/renderer/src/components/` and `App.tsx` hold the Solid UI.
+- `electron/` is the thin main-process shell (file picker, local JSON persistence, IPC).
+
+See [AGENTS.md](./AGENTS.md) for the file-by-file map and the common "how do I add X" recipes (new file format, new theme, new IPC capability). See [docs/DESIGN.md](./docs/DESIGN.md) for architecture, decisions, milestones, and future work.

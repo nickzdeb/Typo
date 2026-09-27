@@ -11,6 +11,37 @@ function isPdf(file: PickedFile): boolean {
   return /\.pdf$/i.test(file.name);
 }
 
+function median(numbers: number[]): number {
+  if (numbers.length === 0) return 0;
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+// PDFs record text per visual line (wrapped at the page's right margin), which almost
+// never lines up with sentence or paragraph structure. Flow same-paragraph lines back
+// together with a space, and only start a new paragraph where the vertical gap between
+// lines is meaningfully larger than the page's typical line spacing.
+function joinPageLines(lines: { y: number; text: string }[]): string {
+  const nonEmpty = lines.map((line) => ({ y: line.y, text: line.text.trim() })).filter((line) => line.text.length > 0);
+  const gaps: number[] = [];
+  for (let index = 1; index < nonEmpty.length; index++) gaps.push(nonEmpty[index - 1].y - nonEmpty[index].y);
+  const typicalGap = median(gaps.filter((gap) => gap > 0));
+  const paragraphGapThreshold = typicalGap * 1.6;
+
+  let pageText = "";
+  nonEmpty.forEach((line, index) => {
+    if (index === 0) {
+      pageText = line.text;
+      return;
+    }
+    const gap = nonEmpty[index - 1].y - line.y;
+    const isParagraphBreak = typicalGap > 0 && gap > paragraphGapThreshold;
+    pageText += (isParagraphBreak ? "\n\n" : " ") + line.text;
+  });
+  return pageText;
+}
+
 function isDocx(file: PickedFile): boolean {
   return /\.docx$/i.test(file.name);
 }
@@ -72,7 +103,7 @@ async function extractPdfText(file: PickedFile): Promise<string> {
         lines.push({ y, text: item.str });
       }
     }
-    pages.push(lines.map((line) => line.text.trim()).filter(Boolean).join("\n"));
+    pages.push(joinPageLines(lines));
   }
 
   return pages.join("\n\n");

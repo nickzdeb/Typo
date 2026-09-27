@@ -8,6 +8,7 @@ import { PptxPreview } from "./components/PptxPreview";
 import { ThemeSettings } from "./components/ThemeSettings";
 
 const passageSize = 420;
+const previewSize = 600;
 const minCenterWidth = 320;
 
 function hasSlideOrPagePreview(kind: DocumentRecord["kind"]): boolean {
@@ -84,6 +85,19 @@ export function App() {
   const passage = createMemo(() => {
     const document = selected();
     return document === undefined ? "" : document.text.slice(document.cursor, document.cursor + passageSize);
+  });
+  // Read-ahead only — never typed against. Shown dimmed so finishing a passage
+  // doesn't feel like hitting a wall: there's visibly more document beyond it.
+  const upcomingPreview = createMemo(() => {
+    const document = selected();
+    if (document === undefined) return "";
+    const start = document.cursor + passageSize;
+    return document.text.slice(start, start + previewSize);
+  });
+  const hasMoreAfterPreview = createMemo(() => {
+    const document = selected();
+    if (document === undefined) return false;
+    return document.cursor + passageSize + previewSize < document.text.length;
   });
   const progress = createMemo(() => {
     const document = selected();
@@ -243,7 +257,10 @@ export function App() {
 
               <div class="grid min-h-0 gap-5" style={{ "grid-template-columns": hasSlideOrPagePreview(document().kind) && showPreview() ? "minmax(0, 1fr) 8px " + previewWidth() + "px" : "minmax(0, 1fr)" }}>
                 <article class="flex min-h-0 min-w-0 flex-col rounded-xl bg-panel p-7 shadow-xl">
-                  <div class="mb-5 flex items-center justify-between"><p class="text-xs uppercase tracking-wide text-muted">typing passage</p><span class="text-xs text-muted">{document().cursor} / {document().text.length}</span></div>
+                  <div class="mb-5 flex items-center justify-between">
+                    <p class="text-xs uppercase tracking-wide text-muted">typing passage</p>
+                    <span class="text-xs text-muted">{document().cursor} / {document().text.length} characters · finishing this passage reveals the next one automatically</span>
+                  </div>
                   <div class="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {[["wpm", metrics().wpm.toFixed(0)], ["accuracy", metrics().accuracy.toFixed(0) + "%"], ["errors", String(metrics().errors)], ["progress", Math.round(progress() * 100) + "%"]].map(([label, value]) => <div class="rounded-lg bg-panelMuted px-3 py-2"><div class="text-xs uppercase tracking-wide text-muted">{label}</div><div class="mt-1 text-lg font-semibold text-ink">{value}</div></div>)}
                   </div>
@@ -254,7 +271,19 @@ export function App() {
                     )}
                     onClick={focusInput}
                   >
-                    <For each={Array.from(passage())}>{(character, index) => <span class={cn(index() < typed().length && typed()[index()] === character ? "text-success" : index() < typed().length ? "bg-error/30 text-error" : index() === typed().length ? "border-b-2 border-accent" : "text-muted")}>{character === " " ? "·" : character}</span>}</For>
+                    <For each={Array.from(passage())}>{(character, index) => <>
+                      <span class={cn(index() < typed().length && typed()[index()] === character ? "text-success" : index() < typed().length ? "bg-error/30 text-error" : index() === typed().length ? "border-b-2 border-accent" : "text-muted")}>{character === " " ? "·" : character}</span>
+                      {character === " " && <wbr />}
+                    </>}</For>
+                    <Show when={upcomingPreview().length > 0}>
+                      <span class="text-muted/30">
+                        <For each={Array.from(upcomingPreview())}>{(character) => <>
+                          {character === " " ? "·" : character}
+                          {character === " " && <wbr />}
+                        </>}</For>
+                        {hasMoreAfterPreview() && "…"}
+                      </span>
+                    </Show>
                     <Show when={!isFocused()}>
                       <div class="absolute inset-0 grid place-items-center rounded-lg bg-canvas/70 text-sm text-muted">
                         Click here or start typing to continue

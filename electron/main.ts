@@ -3,6 +3,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { DocumentRecord, PickedFile } from "../src/shared/types";
 
+// Pin userData to its current location (derived from package.json's "name") before
+// renaming the app's display name to "Typo" below. Electron's default userData path
+// is <appData>/<app name>, so renaming without pinning first would silently point the
+// app at a new, empty folder — orphaning already-saved documents.
+app.setPath("userData", app.getPath("userData"));
+app.setName("Typo");
+
 const maxImportBytes = 100 * 1024 * 1024;
 let mainWindow: BrowserWindow | undefined;
 
